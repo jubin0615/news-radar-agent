@@ -22,6 +22,8 @@ import {
   FileText,
   AlertCircle,
   Trash2,
+  CheckCircle2,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAgent, type ChatItem, type ToolCallChatItem } from "@/hooks/useAgent";
@@ -32,10 +34,10 @@ import type { NewsItem, AgentReport } from "@/types";
 /* ───────────────────── Prompt suggestions ───────────────────── */
 
 const SUGGESTIONS = [
-  { icon: Newspaper, text: "AI 관련 뉴스 알려줘", color: "var(--neon-blue)" },
-  { icon: Newspaper, text: "반도체 관련 뉴스 검색", color: "var(--neon-blue)" },
+  { icon: Newspaper, text: "AI 관련 최신 뉴스 알려줘", color: "var(--neon-blue)" },
+  { icon: Download, text: "최신 뉴스 수집해줘", color: "var(--neon-blue)" },
   { icon: FileText, text: "오늘 리포트 만들어줘", color: "var(--neon-purple)" },
-  { icon: Sparkles, text: "최신 뉴스 수집해줘", color: "var(--neon-blue)" },
+  { icon: Sparkles, text: "요즘 IT 트렌드가 뭐야?", color: "var(--neon-purple)" },
 ];
 
 /* ───────────────────── Chat item animations ───────────────────── */
@@ -264,9 +266,9 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
           News Radar Agent
         </h2>
         <p className="max-w-sm text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-          뉴스 검색, 수집, 리포트 생성을 도와드립니다.
+          IT 기술 뉴스를 수집하고 분석하는 AI 에이전트입니다.
           <br />
-          아래 버튼을 클릭하거나 직접 메시지를 입력해 보세요.
+          자유롭게 대화하거나, 아래 버튼을 클릭해 보세요.
         </p>
       </motion.div>
 
@@ -411,7 +413,9 @@ function ToolCallBubble({
         <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
           {item.toolName === "generate_report"
             ? "리포트를 생성하고 있습니다…"
-            : "뉴스를 검색하고 있습니다…"}
+            : item.toolName === "collect_news"
+              ? "뉴스를 수집하고 있습니다… (1~2분 소요)"
+              : "뉴스를 검색하고 있습니다…"}
         </span>
       </div>
     );
@@ -441,6 +445,17 @@ function ToolCallBubble({
           <Newspaper size={14} style={{ color: "var(--text-muted)" }} />
           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
             검색 결과가 없습니다.
+          </span>
+        </div>
+      );
+    }
+
+    case "collect_news": {
+      return (
+        <div className="flex items-center gap-2 px-4 py-3">
+          <CheckCircle2 size={14} style={{ color: "var(--neon-blue)" }} />
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+            뉴스 수집이 완료되었습니다.
           </span>
         </div>
       );
@@ -484,7 +499,7 @@ function ToolCallBubble({
               {report.newsCount != null
                 ? `${report.newsCount}건 분석 완료`
                 : "리포트 생성 완료"}{" "}
-              — 클릭하여 열기 →
+              — 클릭하여 열기
             </span>
           </div>
         </motion.button>

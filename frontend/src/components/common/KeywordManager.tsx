@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from "re
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Search, Hash, Loader2, Power } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useNavigation } from "@/lib/NavigationContext";
 
 // ── Types ────────────────────────────────────────────────────── //
 interface Keyword {
@@ -20,6 +21,7 @@ export default function KeywordManager({ className }: { className?: string }) {
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { navigateToNewsWithKeyword } = useNavigation();
 
   // ── 초기 로딩: 백엔드에서 키워드 목록 가져오기 ──
   useEffect(() => {
@@ -194,7 +196,7 @@ export default function KeywordManager({ className }: { className?: string }) {
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, scale: 0.6, filter: "blur(4px)" }}
               transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className="group/chip relative flex cursor-default items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 hover:pr-14"
+              className="group/chip relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 hover:pr-14"
               style={{
                 background: keyword.enabled
                   ? "rgba(0, 212, 255, 0.08)"
@@ -204,7 +206,13 @@ export default function KeywordManager({ className }: { className?: string }) {
                 opacity: keyword.enabled ? 1 : 0.6,
               }}
             >
-              <span className="select-none">{keyword.name}</span>
+              <span
+                className="select-none"
+                onClick={() => navigateToNewsWithKeyword(keyword.name)}
+                title={`"${keyword.name}" 뉴스 보기`}
+              >
+                {keyword.name}
+              </span>
 
               {/* Toggle button */}
               <motion.button

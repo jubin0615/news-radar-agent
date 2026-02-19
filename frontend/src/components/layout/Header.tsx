@@ -1,8 +1,17 @@
 "use client";
 
 import { Activity, Bell, Wifi } from "lucide-react";
+import { useNavigation, type TabId } from "@/lib/NavigationContext";
+
+const tabTitles: Record<TabId, string> = {
+  dashboard: "Dashboard",
+  news: "뉴스 수집",
+  chat: "AI 채팅",
+};
 
 export default function Header() {
+  const { activeTab } = useNavigation();
+
   return (
     <header
       className="flex h-14 shrink-0 items-center justify-between border-b px-6"
@@ -16,7 +25,7 @@ export default function Header() {
       {/* Left — page title */}
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Dashboard
+          {tabTitles[activeTab]}
         </h1>
         <span
           className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"

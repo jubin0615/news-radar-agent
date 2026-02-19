@@ -5,6 +5,7 @@
  * as Generative UI on the frontend when the agent invokes it.
  *
  *  search_news     → NewsCarousel (via /api/news)
+ *  collect_news    → Collection progress UI
  *  generate_report → ReportViewer (via /api/report)
  */
 
@@ -26,9 +27,18 @@ export const agentTools: Tool[] = [
     },
   },
   {
+    name: "collect_news",
+    description:
+      "인터넷에서 최신 뉴스를 크롤링하여 수집하고 AI 분석합니다. 진행 상태가 실시간으로 표시됩니다.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "generate_report",
     description:
-      "오늘 수집/분석된 뉴스를 종합하여 일일 브리핑 리포트를 생성합니다. 결과는 ReportViewer 패널로 렌더됩니다.",
+      "수집/분석된 뉴스를 종합하여 일일 브리핑 리포트를 생성합니다. 결과는 ReportViewer 패널로 렌더됩니다.",
     parameters: {
       type: "object",
       properties: {},
@@ -38,10 +48,8 @@ export const agentTools: Tool[] = [
 
 /**
  * Tool name → Generative UI component mapping key.
- * Used by AgUiWrapper to decide which component to render
- * when a TOOL_CALL_END event arrives.
  */
-export type ToolName = "search_news" | "generate_report" | "collect_news" | "daily_report";
+export type ToolName = "search_news" | "generate_report" | "collect_news";
 
 /** Matches backend-side toolName aliases to canonical frontend ToolName */
 export function normalizeToolName(raw: string): ToolName {
@@ -49,7 +57,7 @@ export function normalizeToolName(raw: string): ToolName {
     search_news: "search_news",
     generate_report: "generate_report",
     daily_report: "generate_report",
-    collect_news: "search_news",
+    collect_news: "collect_news",
   };
   return map[raw] ?? "search_news";
 }

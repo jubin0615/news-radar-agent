@@ -55,6 +55,14 @@ public class ReportService {
     }
 
     /**
+     * 전체 수집된 뉴스 리포트 (오늘 뉴스가 없을 때 폴백용)
+     */
+    public ReportResult generateAllNewsReport() {
+        List<News> allNews = newsRepository.findAllByScore();
+        return buildReportData("전체", LocalDate.now(), allNews);
+    }
+
+    /**
      * 마크다운 리포트 생성 → 파일로 저장 후 경로 반환
      */
     public Optional<String> generateMarkdownReport(String keyword, LocalDate date) {

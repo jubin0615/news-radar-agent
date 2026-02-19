@@ -168,6 +168,18 @@ export function useAgent() {
               ),
             );
 
+            // For collect_news, just mark as complete (no data to fetch)
+            if (toolName === "collect_news") {
+              setChatItems((prev) =>
+                prev.map((item) =>
+                  item.id === tcId && item.type === "tool-call"
+                    ? { ...item, status: "complete" as const }
+                    : item,
+                ),
+              );
+              return;
+            }
+
             // Fetch full result data from BFF API
             try {
               const data = await fetchToolData(toolName, parsed);
@@ -201,13 +213,12 @@ export function useAgent() {
       );
     } catch (err) {
       console.error("[useAgent] runAgent error:", err);
-      // Surface the error in chat
       setChatItems((prev) => [
         ...prev,
         {
           type: "assistant",
           id: uuidv4(),
-          content: "⚠️ 에이전트 실행 중 오류가 발생했습니다. 백엔드 서버가 실행 중인지 확인해주세요.",
+          content: "에이전트 실행 중 오류가 발생했습니다. 백엔드 서버가 실행 중인지 확인해주세요.",
           isStreaming: false,
         },
       ]);
@@ -287,7 +298,7 @@ function formatReportContent(report: {
   lines.push(`# 뉴스 데일리 리포트`);
   lines.push("");
   if (s) {
-    lines.push(`## 📊 통계 요약`);
+    lines.push(`## 통계 요약`);
     lines.push("");
     lines.push(`| 항목 | 값 |`);
     lines.push(`|---|---|`);
@@ -306,17 +317,19 @@ function formatReportContent(report: {
 
   const articles = report.articles;
   if (articles && articles.length > 0) {
-    lines.push(`## 📰 주요 기사`);
+    lines.push(`## 주요 기사`);
     lines.push("");
     articles.forEach((a, i) => {
       lines.push(`### ${i + 1}. ${a.title ?? "제목 없음"}`);
       lines.push(
-        `- **중요도**: ${a.grade ?? "N/A"} (${a.importanceScore ?? "-"}점) ・ **카테고리**: ${a.category ?? "-"}`,
+        `- **중요도**: ${a.grade ?? "N/A"} (${a.importanceScore ?? "-"}점) / **카테고리**: ${a.category ?? "-"}`,
       );
       if (a.summary) lines.push(`- ${a.summary}`);
-      if (a.aiReason) lines.push(`> 💡 ${a.aiReason}`);
+      if (a.aiReason) lines.push(`> ${a.aiReason}`);
       lines.push("");
     });
+  } else {
+    lines.push("수집된 뉴스가 없습니다.");
   }
 
   return lines.join("\n");

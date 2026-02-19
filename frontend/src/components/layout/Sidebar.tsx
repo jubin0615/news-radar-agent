@@ -6,30 +6,30 @@ import {
   Radar,
   Newspaper,
   MessageSquare,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import KeywordManager from "@/components/common/KeywordManager";
+import { useNavigation, type TabId } from "@/lib/NavigationContext";
 
 // ── Nav Item Type ────────────────────────────────────────────── //
 interface NavItem {
   icon: typeof Radar;
   label: string;
-  active?: boolean;
+  tabId: TabId;
 }
 
 const navItems: NavItem[] = [
-  { icon: Radar, label: "대시보드", active: true },
-  { icon: Newspaper, label: "뉴스 수집" },
-  { icon: MessageSquare, label: "AI 채팅" },
-  { icon: Settings, label: "설정" },
+  { icon: Radar, label: "대시보드", tabId: "dashboard" },
+  { icon: Newspaper, label: "뉴스 수집", tabId: "news" },
+  { icon: MessageSquare, label: "AI 채팅", tabId: "chat" },
 ];
 
 // ── Component ────────────────────────────────────────────────── //
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const { activeTab, setActiveTab } = useNavigation();
 
   return (
     <motion.aside
@@ -78,21 +78,24 @@ export default function Sidebar() {
 
       {/* ── Navigation ────────────────────────────── */}
       <nav className="flex flex-col gap-1 px-2 pt-4">
-        {navItems.map((item) => (
+        {navItems.map((item) => {
+          const isActive = activeTab === item.tabId;
+          return (
           <button
             key={item.label}
+            onClick={() => setActiveTab(item.tabId)}
             className={cn(
               "group relative flex items-center gap-3 rounded-xl px-3 py-2.5",
               "transition-all duration-200",
               collapsed && "justify-center px-0",
             )}
             style={{
-              background: item.active ? "rgba(0, 212, 255, 0.08)" : "transparent",
-              color: item.active ? "var(--neon-blue)" : "var(--text-secondary)",
+              background: isActive ? "rgba(0, 212, 255, 0.08)" : "transparent",
+              color: isActive ? "var(--neon-blue)" : "var(--text-secondary)",
             }}
           >
             {/* Active indicator bar */}
-            {item.active && (
+            {isActive && (
               <motion.div
                 layoutId="sidebar-active"
                 className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
@@ -109,7 +112,8 @@ export default function Sidebar() {
               </span>
             )}
           </button>
-        ))}
+          );
+        })}
       </nav>
 
       {/* ── Divider ───────────────────────────────── */}
