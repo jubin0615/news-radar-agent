@@ -1,0 +1,471 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+/* ================================================================
+   NEWS INTELLIGENCE RADAR — Global Design System
+   Theme : Deep Dark Mode + Neon Blue/Purple + Glassmorphism
+   Stack : Tailwind CSS v4 · Framer Motion · Lucide React
+   ================================================================ */
+
+/* ─── CSS Custom Properties ──────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg-primary: #030712;
+  --bg-secondary: #0a1128;
+  --bg-tertiary: #111d3f;
+  --bg-surface: #1a1f3a;
+
+  /* Neon accents */
+  --neon-blue: #00d4ff;
+  --neon-purple: #a855f7;
+
+  /* Text hierarchy */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+
+  /* Glass tokens */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-light: rgba(255, 255, 255, 0.08);
+  --glass-bg-medium: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-light: rgba(255, 255, 255, 0.15);
+  --glass-blur: 12px;
+
+  /* Transition presets */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Tailwind v4 Theme Tokens ───────────────────────────────── */
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ─── Base Styles ────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--glass-border);
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Ambient mesh-gradient background (fixed, behind everything) */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 0%, rgba(0, 212, 255, 0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 20%, rgba(168, 85, 247, 0.05) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 40% at 40% 90%, rgba(0, 212, 255, 0.04) 0%, transparent 50%),
+      var(--bg-primary);
+    pointer-events: none;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.20);
+  }
+
+  /* ── Selection ── */
+  ::selection {
+    background: rgba(0, 212, 255, 0.30);
+    color: #f1f5f9;
+  }
+
+  /* ── Focus ring ── */
+  :focus-visible {
+    outline: 2px solid var(--neon-blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ─── Glassmorphism Component Classes ────────────────────────── */
+@layer components {
+
+  /* ── Base glass panels ─────────── */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .glass-light {
+    background: var(--glass-bg-light);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border-light);
+    border-radius: 16px;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-medium {
+    background: var(--glass-bg-medium);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border-light);
+    border-radius: 16px;
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.30),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-heavy {
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    border-radius: 16px;
+    box-shadow:
+      0 16px 48px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  }
+
+  /* ── Glass with neon glow accents ── */
+  .glass-neon-blue {
+    background: rgba(0, 212, 255, 0.04);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid rgba(0, 212, 255, 0.18);
+    border-radius: 16px;
+    box-shadow:
+      0 0 20px rgba(0, 212, 255, 0.08),
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(0, 212, 255, 0.08);
+  }
+
+  .glass-neon-purple {
+    background: rgba(168, 85, 247, 0.04);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid rgba(168, 85, 247, 0.18);
+    border-radius: 16px;
+    box-shadow:
+      0 0 20px rgba(168, 85, 247, 0.08),
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(168, 85, 247, 0.08);
+  }
+
+  .glass-neon-mixed {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid transparent;
+    border-radius: 16px;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    background-clip: padding-box;
+  }
+
+  /* ── Neon text effects ───────── */
+  .text-neon-glow-blue {
+    color: var(--neon-blue);
+    text-shadow:
+      0 0 8px rgba(0, 212, 255, 0.5),
+      0 0 24px rgba(0, 212, 255, 0.2);
+  }
+
+  .text-neon-glow-purple {
+    color: var(--neon-purple);
+    text-shadow:
+      0 0 8px rgba(168, 85, 247, 0.5),
+      0 0 24px rgba(168, 85, 247, 0.2);
+  }
+
+  .text-gradient-neon {
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Neon gradient border (via pseudo-element mask) ── */
+  .border-gradient-neon {
+    position: relative;
+    border: none !important;
+    border-radius: 16px;
+  }
+  .border-gradient-neon::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(0, 212, 255, 0.45),
+      rgba(168, 85, 247, 0.45)
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ── Decorative separators ───── */
+  .neon-divider {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 212, 255, 0.30),
+      rgba(168, 85, 247, 0.30),
+      transparent
+    );
+  }
+
+  .neon-divider-vertical {
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      rgba(0, 212, 255, 0.30),
+      rgba(168, 85, 247, 0.30),
+      transparent
+    );
+  }
+
+  /* ── Shimmer loading skeleton ── */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.03) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  /* ── Radar pulse dot ───────── */
+  .radar-pulse {
+    position: relative;
+  }
+  .radar-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(0, 212, 255, 0.35);
+    animation: pulse-neon 2s ease-in-out infinite;
+  }
+
+  /* ── Neon dot indicator ────── */
+  .neon-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--neon-blue);
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+  }
+
+  .neon-dot-purple {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--neon-purple);
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+  }
+}
+
+/* ─── Utility Classes ────────────────────────────────────────── */
+@layer utilities {
+  /* Transition speed presets */
+  .transition-smooth {
+    transition: all var(--transition-base);
+  }
+  .transition-fast {
+    transition: all var(--transition-fast);
+  }
+  .transition-slow {
+    transition: all var(--transition-slow);
+  }
+
+  /* Hide scrollbar but keep scroll functionality */
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Balanced text wrapping for headings */
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ─── Report Markdown Styles ─────────────────────────────────── */
+.report-markdown {
+  line-height: 1.75;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.report-markdown h1,
+.report-markdown h2,
+.report-markdown h3,
+.report-markdown h4 {
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+  line-height: 1.35;
+}
+
+.report-markdown h1 {
+  font-size: 1.35rem;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--glass-border);
+}
+.report-markdown h2 {
+  font-size: 1.15rem;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--glass-border);
+}
+.report-markdown h3 { font-size: 1rem; }
+.report-markdown h4 { font-size: 0.9rem; color: var(--text-secondary); }
+
+.report-markdown p {
+  margin-bottom: 1em;
+}
+
+.report-markdown a {
+  color: var(--neon-blue);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.25);
+  transition: border-color 200ms;
+}
+.report-markdown a:hover {
+  border-color: var(--neon-blue);
+}
+
+.report-markdown strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.report-markdown em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.report-markdown ul,
+.report-markdown ol {
+  padding-left: 1.4em;
+  margin-bottom: 1em;
+}
+.report-markdown li {
+  margin-bottom: 0.35em;
+}
+.report-markdown li::marker {
+  color: rgba(0, 212, 255, 0.5);
+}
+
+.report-markdown blockquote {
+  border-left: 3px solid rgba(0, 212, 255, 0.3);
+  padding: 0.6em 1em;
+  margin: 1em 0;
+  background: rgba(0, 212, 255, 0.04);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.report-markdown code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
+  font-size: 0.82em;
+  font-family: var(--font-geist-mono), monospace;
+  color: var(--neon-blue);
+}
+
+.report-markdown pre {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1em 1.2em;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+.report-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+}
+
+.report-markdown hr {
+  border: none;
+  height: 1px;
+  margin: 2em 0;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.3), rgba(168, 85, 247, 0.3), transparent);
+}
+
+.report-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.82rem;
+}
+.report-markdown th {
+  text-align: left;
+  padding: 0.6em 0.8em;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--glass-border-light);
+}
+.report-markdown td {
+  padding: 0.5em 0.8em;
+  border-bottom: 1px solid var(--glass-border);
+}
+.report-markdown tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.report-markdown img {
+  max-width: 100%;
+  border-radius: 12px;
+  margin: 1em 0;
+}

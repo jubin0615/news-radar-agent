@@ -35,10 +35,14 @@ public class NewsController {
                 .toList();
     }
 
-    // 키워드로 필터링 조회 (최신순)
+    // 키워드로 필터링 조회 (exact match → LIKE 폴백)
     @GetMapping("/search")
     public List<NewsResponse> searchByKeyword(@RequestParam String keyword) {
-        return newsRepository.findByKeywordLatest(keyword).stream()
+        List<News> results = newsRepository.findByKeywordLatest(keyword);
+        if (results.isEmpty()) {
+            results = newsRepository.searchByKeyword(keyword);
+        }
+        return results.stream()
                 .map(this::toResponse)
                 .toList();
     }

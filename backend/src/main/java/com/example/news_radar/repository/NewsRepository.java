@@ -28,6 +28,14 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     @Query("SELECT n FROM News n WHERE n.keyword = :keyword ORDER BY n.collectedAt DESC")
     List<News> findByKeywordLatest(String keyword);
 
+    // 키워드로 제목·본문·키워드 필드 검색 (LIKE, 최신순) — 폴백용
+    @Query("SELECT n FROM News n WHERE " +
+           "LOWER(n.keyword) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(n.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(n.content) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+           "ORDER BY n.importanceScore DESC NULLS LAST")
+    List<News> searchByKeyword(String keyword);
+
     // 중요도 순 전체 조회
     @Query("SELECT n FROM News n ORDER BY n.importanceScore DESC")
     List<News> findAllByScore();

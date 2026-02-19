@@ -2,24 +2,20 @@ package com.example.news_radar.service;
 
 import com.example.news_radar.dto.AgentEvent;
 import com.example.news_radar.dto.AgentRequest;
+import com.example.news_radar.dto.IntentResult;
 import com.example.news_radar.dto.ReportResult;
-import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.entity.News;
-import com.example.news_radar.repository.KeywordRepository;
 import com.example.news_radar.repository.NewsRepository;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +25,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * AG-UI 에이전트 서비스
- * - 사용자 메시지를 분석하여 적절한 서비스(뉴스 조회, 수집, 리포트)를 호출
+ * - LLM으로 사용자 의도를 파악하고 적절한 서비스를 호출
+ * - 전체 대화 히스토리를 컨텍스트로 활용해 맥락을 이해한 응답 제공
  * - 진행 상황을 SSE 이벤트로 프론트엔드에 스트리밍
  */
 @Slf4j
@@ -37,13 +34,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequiredArgsConstructor
 public class AgentService {
 
-    // "LLM 관련 뉴스" 같은 패턴에서 키워드 추출용 정규식
-    private static final Pattern KEYWORD_REGEX = Pattern.compile("([\\p{L}A-Za-z0-9+#-]+)\\s*관련\\s*뉴스");
-
     private final NewsService newsService;
     private final NewsRepository newsRepository;
-    private final KeywordRepository keywordRepository;
     private final ReportService reportService;
+    private final OpenAiService openAiService;
 
     // runId → SseEmitter 매핑 (실행 중인 에이전트의 SSE 연결 관리)
     private final ConcurrentMap<String, SseEmitter> emitters = new ConcurrentHashMap<>();
@@ -111,30 +105,32 @@ public class AgentService {
     // ==================== 요청 처리 ====================
 
     /**
-     * 사용자 메시지를 분석하여 적절한 기능 실행
-     * - "수집" → 뉴스 수집
-     * - "오늘 리포트" → 일일 리포트 생성
-     * - 그 외 → 뉴스 검색
+     * LLM으로 전체 대화 컨텍스트를 분석해 의도를 파악하고 적절한 기능 실행
+     * - "collect" → 뉴스 수집
+     * - "report"  → 일일 리포트 생성
+     * - "search"  → 키워드 뉴스 검색
+     * - "chat"    → LLM 대화 응답 (맥락 반영)
      */
     private void processRequest(AgentRequest request, String runId, String threadId, SseEmitter emitter) {
         try {
-            // 실행 시작 이벤트
             sendEvent(emitter, "RUN_STARTED", runId, Map.of("threadId", threadId, "runId", runId));
 
-            String userMsg = getLastUserMessage(request);
-            if (userMsg == null || userMsg.isBlank()) {
+            List<AgentRequest.Message> messages = request.getMessages();
+            if (messages == null || messages.isEmpty()) {
                 sendText(emitter, runId, "요청 메시지가 비어 있습니다.");
                 finishRun(emitter, runId, "failed");
                 return;
             }
 
-            // 의도 분석 후 분기 처리
-            if (isCollectRequest(userMsg)) {
-                handleCollect(emitter, runId, userMsg);
-            } else if (isDailyReportRequest(userMsg)) {
-                handleDailyReport(emitter, runId);
-            } else {
-                handleSearch(emitter, runId, userMsg);
+            // LLM으로 전체 대화 히스토리 기반 의도 분류
+            IntentResult intent = openAiService.classifyIntent(messages);
+            log.info("의도 분류 결과: action={}, keyword={}", intent.getAction(), intent.getKeyword());
+
+            switch (intent.getAction()) {
+                case "collect" -> handleCollect(emitter, runId);
+                case "report"  -> handleDailyReport(emitter, runId);
+                case "search"  -> handleSearch(emitter, runId, intent.getKeyword());
+                default        -> handleChat(emitter, runId, messages);
             }
         } catch (Exception e) {
             log.error("에이전트 처리 실패: {}", e.getMessage(), e);
@@ -144,10 +140,10 @@ public class AgentService {
     }
 
     // ---- 뉴스 수집 처리 ----
-    private void handleCollect(SseEmitter emitter, String runId, String userMsg) {
+    private void handleCollect(SseEmitter emitter, String runId) {
         sendText(emitter, runId, "뉴스 수집을 시작합니다. 진행 상태를 실시간으로 전달합니다.");
         sendEvent(emitter, "TOOL_CALL_START", runId,
-                Map.of("toolName", "collect_news", "input", Map.of("command", userMsg)));
+                Map.of("toolName", "collect_news", "input", Map.of("command", "collect")));
         // 비동기 수집 시작 (진행 상황은 onCollectionProgress로 수신)
         newsService.collectByKeywordsAsync(runId);
     }
@@ -173,14 +169,20 @@ public class AgentService {
     }
 
     // ---- 뉴스 검색 처리 ----
-    private void handleSearch(SseEmitter emitter, String runId, String userMsg) {
-        String keyword = extractKeyword(userMsg);
+    private void handleSearch(SseEmitter emitter, String runId, String keyword) {
         List<News> newsList;
 
         if (keyword != null && !keyword.isBlank()) {
             sendEvent(emitter, "TOOL_CALL_START", runId,
                     Map.of("toolName", "search_news", "keyword", keyword));
+
+            // 1차: keyword 필드 exact match
             newsList = newsRepository.findByKeywordLatest(keyword);
+
+            // 2차: exact match 결과 없으면 제목·본문·키워드 LIKE 검색
+            if (newsList.isEmpty()) {
+                newsList = newsRepository.searchByKeyword(keyword);
+            }
         } else {
             sendEvent(emitter, "TOOL_CALL_START", runId, Map.of("toolName", "search_news"));
             newsList = newsRepository.findAllByScore();
@@ -198,51 +200,14 @@ public class AgentService {
         finishRun(emitter, runId, "completed");
     }
 
-    // ==================== 메시지 분석 유틸 ====================
-
-    // 마지막 사용자 메시지 추출
-    private String getLastUserMessage(AgentRequest request) {
-        if (request.getMessages() == null || request.getMessages().isEmpty()) return null;
-
-        List<AgentRequest.Message> msgs = request.getMessages();
-        for (int i = msgs.size() - 1; i >= 0; i--) {
-            AgentRequest.Message msg = msgs.get(i);
-            if (msg != null && "user".equalsIgnoreCase(msg.getRole())) {
-                return msg.getContent();
-            }
-        }
-        return msgs.getLast().getContent();
+    // ---- 일반 대화 처리 (전체 메시지 컨텍스트 반영) ----
+    private void handleChat(SseEmitter emitter, String runId, List<AgentRequest.Message> messages) {
+        String response = openAiService.chatWithContext(messages);
+        sendText(emitter, runId, response);
+        finishRun(emitter, runId, "completed");
     }
 
-    // "수집" 또는 "collect" 포함 여부
-    private boolean isCollectRequest(String msg) {
-        String lower = msg.toLowerCase(Locale.ROOT);
-        return lower.contains("수집") || lower.contains("collect");
-    }
-
-    // "오늘" + "리포트/report" 포함 여부
-    private boolean isDailyReportRequest(String msg) {
-        String lower = msg.toLowerCase(Locale.ROOT);
-        return lower.contains("오늘") && (lower.contains("리포트") || lower.contains("report"));
-    }
-
-    // 메시지에서 키워드 추출 (DB 키워드 매칭 → 정규식 매칭)
-    private String extractKeyword(String msg) {
-        if (msg == null || msg.isBlank()) return null;
-
-        String lower = msg.toLowerCase(Locale.ROOT);
-
-        // DB에 등록된 키워드와 매칭 시도
-        for (Keyword kw : keywordRepository.findAll()) {
-            if (kw.getName() != null && lower.contains(kw.getName().toLowerCase(Locale.ROOT))) {
-                return kw.getName();
-            }
-        }
-
-        // "OOO 관련 뉴스" 패턴 매칭
-        Matcher matcher = KEYWORD_REGEX.matcher(msg);
-        return matcher.find() ? matcher.group(1) : null;
-    }
+    // ==================== 뉴스 결과 포맷 ====================
 
     // 뉴스 검색 결과를 텍스트 메시지로 변환
     private String buildNewsReply(String keyword, List<News> newsList) {
