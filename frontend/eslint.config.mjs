@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party reference workspace (not part of this app's lint target)
+    "reference/**",
   ]),
 ]);
 

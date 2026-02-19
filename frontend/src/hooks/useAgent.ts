@@ -102,7 +102,7 @@ export function useAgent() {
           async onTextMessageContentEvent({ event }) {
             const delta = (event as unknown as Record<string, string>).delta ?? "";
             currentContentBuf += delta;
-            const snap = currentContentBuf;
+            const snap = sanitizeAssistantContent(currentContentBuf);
             const mid = currentMsgId;
             setChatItems((prev) =>
               prev.map((item) =>
@@ -115,10 +115,11 @@ export function useAgent() {
 
           async onTextMessageEndEvent() {
             const mid = currentMsgId;
+            const finalContent = sanitizeAssistantContent(currentContentBuf);
             setChatItems((prev) =>
               prev.map((item) =>
                 item.id === mid && item.type === "assistant"
-                  ? { ...item, isStreaming: false }
+                  ? { ...item, content: finalContent, isStreaming: false }
                   : item,
               ),
             );
@@ -333,4 +334,14 @@ function formatReportContent(report: {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Removes leaked tool payload JSON (e.g. {"tool":"search_news", ...})
+ * that can appear at the tail of assistant text responses.
+ */
+function sanitizeAssistantContent(content: string): string {
+  const toolPayloadStart = content.search(/(?:^|\n)\s*\{\s*"tool"\s*:/);
+  if (toolPayloadStart === -1) return content;
+  return content.slice(0, toolPayloadStart).trimEnd();
 }
