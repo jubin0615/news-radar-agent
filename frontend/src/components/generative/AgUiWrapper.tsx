@@ -17,7 +17,6 @@ import React, {
   useRef,
   useCallback,
   useMemo,
-  type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
@@ -96,20 +95,23 @@ const SYSTEM_INSTRUCTIONS = `
 사용자와 자연스럽게 한국어로 대화하면서, 필요할 때 아래 도구를 사용해.
 
 ## 사용 가능한 도구
-- search_news: DB에서 뉴스를 키워드로 검색 (keyword 파라미터 옵션)
-- collect_news: 인터넷에서 최신 뉴스를 크롤링해 수집
+- search_news: DB에서 뉴스를 키워드로 검색. keyword 없이 호출하면 중요도 순 전체 최신 뉴스를 반환
+- collect_news: 인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집
 - generate_report: 수집된 뉴스로 일일 브리핑 리포트 생성
 - ask_about_news: 수집된 뉴스 내용을 기반으로 심층 질문에 RAG 방식으로 답변
 
 ## 도구 사용 기준
-- "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news
+- "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news (관련 keyword 파라미터 사용)
+- "핫뉴스", "TOP5", "인기", "트렌드", "최신 뉴스" → search_news를 keyword 없이 호출해 전체 뉴스를 받아 직접 선별
 - "수집", "크롤링", "새 뉴스 가져와" → collect_news
 - "리포트", "보고서", "브리핑", "요약 정리" → generate_report
 - "왜", "어떻게", "분석해줘", "설명해줘", "~에 대해 자세히", "~의 의미는", "~영향은", "~전망은" → ask_about_news
 - 일반 질문·잡담 → 도구 없이 자연스럽게 대화
 
-## 주의사항
-- 수집된 뉴스가 없을 때 검색 요청이 오면 먼저 collect_news를 제안해.
+## 주의사항 (반드시 준수)
+- **collect_news는 사용자가 명시적으로 "수집", "크롤링"을 요청할 때만 사용하라.** 시스템 상태에 totalNews > 0이면 이미 뉴스가 있으므로 자동으로 collect_news를 실행하지 마라.
+- ask_about_news가 "관련 기사를 찾지 못했습니다"를 반환해도 뉴스 DB가 비어있는 게 아니다. 해당 주제의 유사 기사가 부족한 것이다. 이 경우 collect_news를 자동으로 실행하지 말고, 사용자에게 더 구체적인 키워드로 다시 질문하거나 직접 수집을 요청하도록 안내하라.
+- search_news가 빈 결과를 반환해도 자동으로 collect_news를 실행하지 마라. 먼저 keyword 없이 search_news를 재시도하고, 그래도 없으면 사용자에게 수집을 제안하라.
 - 뉴스 내용에 대한 깊은 이해·분석이 필요한 질문은 ask_about_news를 사용해.
 - 대화 맥락을 항상 반영해서 일관성 있게 답변해.
 `.trim();
@@ -217,7 +219,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           </div>
         );
       }
-      return <NewsCarousel items={items} title="검색 결과" />;
+      return <NewsCarousel items={items} title="검색 결과" onAskAboutNews={handleSend} />;
     },
   });
 
@@ -591,7 +593,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
 
         <form
           className="nrc-input-form"
-          onSubmit={(e: FormEvent) => {
+          onSubmit={(e) => {
             e.preventDefault();
             handleSend();
           }}

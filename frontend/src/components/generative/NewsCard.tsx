@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ExternalLink, Clock, Tag, Brain, TrendingUp } from "lucide-react";
+import { ExternalLink, Clock, Tag, Brain, TrendingUp, ChevronDown, ChevronUp, MessageCircleQuestion } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { NewsItem, NewsGrade } from "@/types";
 
@@ -39,6 +40,34 @@ const gradeStyles: Record<NewsGrade, { bg: string; border: string; text: string;
   },
 };
 
+// ── Contextual question generator ────────────────────────────── //
+function buildContextualQuestion(news: NewsItem): string {
+  const { title, category, keyword, grade } = news;
+  const cat = category?.toLowerCase() ?? "";
+
+  if (cat.includes("경제") || cat.includes("금융") || cat.includes("시장") || cat.includes("주식")) {
+    return `"${title}" 기사가 ${keyword} 관련 시장·투자에 미칠 영향을 분석해줘`;
+  }
+  if (cat.includes("정책") || cat.includes("규제") || cat.includes("정치") || cat.includes("법")) {
+    return `"${title}" 기사의 정책·규제 변화가 ${keyword} 산업에 갖는 의미는?`;
+  }
+  if (cat.includes("ai") || cat.includes("기술") || cat.includes("반도체") || cat.includes("sw")) {
+    return `"${title}" 기사에서 소개된 ${keyword} 기술의 핵심 의의와 향후 발전 방향은?`;
+  }
+  if (cat.includes("기업") || cat.includes("비즈니스") || cat.includes("스타트업")) {
+    return `"${title}" 기사에서 ${keyword} 관련 기업들의 전략적 시사점은 무엇인가요?`;
+  }
+  if (cat.includes("보안") || cat.includes("사이버")) {
+    return `"${title}" 기사의 보안 이슈가 ${keyword} 분야에 미치는 위협과 대응 방안은?`;
+  }
+
+  // Grade-based fallback
+  if (grade === "CRITICAL" || grade === "HIGH") {
+    return `"${title}" 이 중요 이슈에서 ${keyword}의 단기·장기 영향과 리스크를 분석해줘`;
+  }
+  return `"${title}" 기사에서 ${keyword}에 관한 핵심 쟁점과 향후 전망은?`;
+}
+
 // ── Time formatting ──────────────────────────────────────────── //
 function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -56,13 +85,17 @@ interface NewsCardProps {
   news: NewsItem;
   index?: number;
   className?: string;
+  onAskAboutNews?: (question: string) => void;
 }
 
-export default function NewsCard({ news, index = 0, className }: NewsCardProps) {
+export default function NewsCard({ news, index = 0, className, onAskAboutNews }: NewsCardProps) {
   const grade = gradeStyles[news.grade] ?? gradeStyles["N/A"];
+  const [isExpanded, setIsExpanded] = useState(false);
+  const canExpand = news.aiReason && news.aiReason.length > 80;
 
   return (
     <motion.article
+      layout
       /* ── Stagger entrance ── */
       initial={{ opacity: 0, y: 20, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -78,67 +111,76 @@ export default function NewsCard({ news, index = 0, className }: NewsCardProps) 
           "0 16px 48px rgba(0,0,0,0.35), 0 0 24px rgba(0, 212, 255, 0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
       }}
       className={cn(
-        "glass group relative flex w-[340px] shrink-0 flex-col overflow-hidden",
-        "cursor-default transition-colors duration-300",
+        "glass group relative flex w-[300px] shrink-0 flex-col overflow-hidden transition-all",
+        "min-h-[380px] cursor-default duration-300 ease-in-out",
         className,
       )}
     >
-      {/* ── Thumbnail / Gradient Header ── */}
-      <div className="relative h-36 w-full overflow-hidden">
-        {news.thumbnailUrl ? (
-          <img
-            src={news.thumbnailUrl}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          /* Gradient placeholder when no thumbnail */
-          <div
-            className="h-full w-full"
-            style={{
-              background: `linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(168,85,247,0.12) 100%)`,
-            }}
-          />
-        )}
-
-        {/* Dark gradient overlay */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: "linear-gradient(to top, var(--bg-primary) 0%, transparent 60%)",
-          }}
-        />
-
-        {/* Grade badge */}
-        <div
-          className="absolute right-3 top-3 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-          style={{
-            background: grade.bg,
-            border: `1px solid ${grade.border}`,
-            color: grade.text,
-            boxShadow: grade.glow,
-            backdropFilter: "blur(8px)",
-          }}
-        >
-          {news.grade}
-          {news.importanceScore != null && (
-            <span className="ml-1 opacity-70">{news.importanceScore}</span>
+      {/* ── Summary Dashboard Header ── */}
+      <div className="flex flex-col gap-2 px-3 pt-3 pb-1">
+        {/* Context strip — chips row */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Category chip */}
+          {news.category && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium"
+              style={{
+                background: "rgba(168, 85, 247, 0.10)",
+                border: "1px solid rgba(168, 85, 247, 0.20)",
+                color: "var(--neon-purple, #a855f7)",
+              }}
+            >
+              <TrendingUp size={9} strokeWidth={2.5} />
+              {news.category}
+            </span>
           )}
+
+          {/* Relative time chip */}
+          <span
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <Clock size={12} strokeWidth={2.5} />
+            {formatRelativeTime(news.collectedAt)}
+          </span>
         </div>
 
-        {/* Keyword chip */}
-        <div
-          className="absolute left-3 top-3 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold"
-          style={{
-            background: "rgba(0,0,0,0.5)",
-            backdropFilter: "blur(8px)",
-            color: "var(--neon-blue)",
-            border: "1px solid rgba(0, 212, 255, 0.15)",
-          }}
-        >
-          <Tag size={9} strokeWidth={2.5} />
-          {news.keyword}
+        {/* Keyword + Grade row */}
+        <div className="flex items-center justify-between">
+          {/* Keyword chip */}
+          <div
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold"
+            style={{
+              background: "rgba(0, 212, 255, 0.08)",
+              border: "1px solid rgba(0, 212, 255, 0.18)",
+              color: "var(--neon-blue)",
+            }}
+          >
+            <Tag size={12} strokeWidth={2.5} />
+            {news.keyword}
+          </div>
+
+          {/* Grade badge */}
+          <div
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold uppercase tracking-wider"
+            style={{
+              background: grade.bg,
+              border: `1px solid ${grade.border}`,
+              color: grade.text,
+              boxShadow: grade.glow,
+            }}
+          >
+            {news.grade}
+            {news.importanceScore != null && (
+              <span className="ml-0.5 opacity-70">{news.importanceScore}</span>
+            )}
+          </div>
         </div>
+
       </div>
 
       {/* ── Content ── */}
@@ -151,64 +193,77 @@ export default function NewsCard({ news, index = 0, className }: NewsCardProps) 
           {news.title}
         </h3>
 
-        {/* Summary */}
-        {news.summary && (
-          <p
-            className="line-clamp-3 text-xs leading-relaxed"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {news.summary}
-          </p>
-        )}
-
-        {/* AI Reason chip */}
+        {/* AI Reason (replacing Summary) */}
         {news.aiReason && (
-          <div
-            className="flex items-start gap-1.5 rounded-lg p-2 text-[11px] leading-snug"
-            style={{
-              background: "rgba(168, 85, 247, 0.06)",
-              border: "1px solid rgba(168, 85, 247, 0.12)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            <Brain
-              size={12}
-              className="mt-px shrink-0"
-              style={{ color: "var(--neon-purple)" }}
-              strokeWidth={2}
-            />
-            <span className="line-clamp-2">{news.aiReason}</span>
+          <div className="relative group/ai-reason mt-1">
+            <div
+              className={cn(
+                "rounded-xl p-3 text-xs leading-relaxed transition-all duration-300",
+                "border border-[rgba(168,85,247,0.15)] bg-[rgba(168,85,247,0.05)]",
+              )}
+            >
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--neon-purple)]">
+                <Brain size={12} strokeWidth={2.5} />
+                <span>AI 분석</span>
+              </div>
+              <p
+                className={cn(!isExpanded && "line-clamp-3")}
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {news.aiReason}
+              </p>
+            </div>
+            
+            {canExpand && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsExpanded(!isExpanded);
+                }}
+                className="mt-1.5 flex w-full items-center justify-center gap-1 text-[10px] font-medium transition-colors hover:text-[var(--neon-purple)]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {isExpanded ? (
+                  <>
+                    접기 <ChevronUp size={12} strokeWidth={2} />
+                  </>
+                ) : (
+                  <>
+                    더보기 <ChevronDown size={12} strokeWidth={2} />
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
+
+        {/* RAG CTA button — below AI analysis */}
+        {onAskAboutNews && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAskAboutNews(buildContextualQuestion(news));
+            }}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 hover:brightness-125"
+            style={{
+              background: "linear-gradient(135deg, rgba(0,212,255,0.12), rgba(168,85,247,0.12))",
+              border: "1px solid rgba(0, 212, 255, 0.18)",
+              color: "var(--neon-blue)",
+            }}
+          >
+            <MessageCircleQuestion size={12} strokeWidth={2.5} />
+            이 기사 더 물어보기
+          </button>
+        )}
+
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Footer: metadata + link */}
-        <div className="flex items-center justify-between border-t pt-2.5" style={{ borderColor: "var(--glass-border)" }}>
-          <div className="flex items-center gap-3">
-            {/* Time */}
-            <span
-              className="flex items-center gap-1 text-[10px]"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <Clock size={10} strokeWidth={2} />
-              {formatRelativeTime(news.collectedAt)}
-            </span>
-
-            {/* Category */}
-            {news.category && (
-              <span
-                className="flex items-center gap-1 text-[10px]"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <TrendingUp size={10} strokeWidth={2} />
-                {news.category}
-              </span>
-            )}
-          </div>
-
-          {/* External link */}
+        {/* Footer: external link */}
+        <div className="flex items-center justify-end border-t pt-2.5" style={{ borderColor: "var(--glass-border)" }}>
           <a
             href={news.url}
             target="_blank"

@@ -12,6 +12,7 @@ interface NewsCarouselProps {
   items: NewsItem[];
   title?: string;
   className?: string;
+  onAskAboutNews?: (question: string) => void;
 }
 
 // ── Component ────────────────────────────────────────────────── //
@@ -19,6 +20,7 @@ export default function NewsCarousel({
   items,
   title = "수집된 뉴스",
   className,
+  onAskAboutNews,
 }: NewsCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -48,7 +50,7 @@ export default function NewsCarousel({
   const scroll = (direction: "left" | "right") => {
     const el = scrollRef.current;
     if (!el) return;
-    const amount = 360; // slightly more than card width
+    const amount = 320; // slightly more than card width
     el.scrollBy({
       left: direction === "left" ? -amount : amount,
       behavior: "smooth",
@@ -142,10 +144,10 @@ export default function NewsCarousel({
 
         <div
           ref={scrollRef}
-          className="scrollbar-hidden flex gap-4 overflow-x-auto pb-2 pt-1"
+          className="scrollbar-hidden flex items-start gap-4 overflow-x-auto pb-2 pt-1"
         >
           {items.map((item, i) => (
-            <NewsCard key={item.id} news={item} index={i} />
+            <NewsCard key={item.id} news={item} index={i} onAskAboutNews={onAskAboutNews} />
           ))}
         </div>
       </div>

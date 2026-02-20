@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class RagService {
 
     private static final int    TOP_K     = 5;
-    private static final double THRESHOLD = 0.50;
+    private static final double THRESHOLD = 0.30;
 
     private final NewsVectorStoreService vectorStoreService;
     private final ChatClient             chatClient;
