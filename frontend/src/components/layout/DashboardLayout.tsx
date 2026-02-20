@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ReactNode, useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout";
@@ -43,30 +43,16 @@ function DashboardContent({ stats: initialStats, children }: DashboardLayoutProp
     };
 
     fetchData();
-    // 10s polling
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [activeTab]);
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case "dashboard":
-        return <DashboardView />;
-      case "news":
-        return <NewsCollectionView className="h-full" />;
-      case "chat":
-        return <AgUiWrapper className="h-full" />;
-      default:
-        return children;
-    }
-  };
-
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      {/* ── Left: Sidebar ── */}
+      {/* Left: Sidebar */}
       <Sidebar />
 
-      {/* ── Right: Main area ── */}
+      {/* Right: Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <Header />
@@ -121,7 +107,14 @@ function DashboardContent({ stats: initialStats, children }: DashboardLayoutProp
 
         {/* Central content area */}
         <main className="relative flex-1 overflow-y-auto p-6">
-          {renderContent()}
+          {/* AgUiWrapper: always mounted, hidden when not on chat tab */}
+          <div className={activeTab === "chat" ? "h-full" : "hidden"}>
+            <AgUiWrapper className="h-full" />
+          </div>
+
+          {activeTab === "dashboard" && <DashboardView />}
+          {activeTab === "news" && <NewsCollectionView className="h-full" />}
+          {activeTab !== "dashboard" && activeTab !== "news" && activeTab !== "chat" && children}
         </main>
       </div>
     </div>

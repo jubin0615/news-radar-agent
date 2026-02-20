@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { CopilotKit } from "@copilotkit/react-core";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,7 +28,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        {/* CopilotKit provider: 모든 페이지에서 useCopilotAction / useCopilotChat 사용 가능 */}
+        <CopilotKit runtimeUrl="/api/copilotkit" useSingleEndpoint agent="default">
+          {children}
+        </CopilotKit>
       </body>
     </html>
   );

@@ -469,3 +469,188 @@
   border-radius: 12px;
   margin: 1em 0;
 }
+
+/* ================================================================
+   CopilotKit 다크 테마 오버라이드
+   뉴스 레이더 사이버펑크 디자인 시스템에 맞게 재정의
+   ================================================================ */
+
+/* CopilotKit CSS 변수 재정의 */
+:root {
+  --copilot-kit-primary-color: #00d4ff;
+  --copilot-kit-contrast-color: #030712;
+  --copilot-kit-secondary-contrast-color: #f1f5f9;
+  --copilot-kit-background-color: rgba(3, 7, 18, 0.95);
+  --copilot-kit-muted-color: #475569;
+  --copilot-kit-separator-color: rgba(255, 255, 255, 0.08);
+  --copilot-kit-scrollbar-color: rgba(0, 212, 255, 0.15);
+  --copilot-kit-response-button-color: #00d4ff;
+  --copilot-kit-response-button-background-color: rgba(0, 212, 255, 0.08);
+}
+
+/* 채팅 컨테이너 */
+.news-radar-chat-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.news-radar-copilot-chat {
+  flex: 1;
+  height: 100%;
+  background: transparent !important;
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+/* CopilotKit 내부 컨테이너 */
+.news-radar-copilot-chat [class*="copilot-kit"] {
+  background: transparent;
+}
+
+/* 메시지 영역 배경 */
+.news-radar-copilot-chat [class*="messages"] {
+  background: transparent;
+}
+
+/* 사용자 메시지 버블 */
+.news-radar-copilot-chat [class*="user-message"],
+.news-radar-copilot-chat .copilot-kit-user-message {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(168, 85, 247, 0.12)) !important;
+  border: 1px solid rgba(0, 212, 255, 0.15) !important;
+  color: var(--text-primary) !important;
+  border-radius: 1rem 1rem 0.25rem 1rem !important;
+}
+
+/* 어시스턴트 메시지 버블 */
+.news-radar-copilot-chat [class*="assistant-message"],
+.news-radar-copilot-chat .copilot-kit-assistant-message {
+  background: var(--glass-bg-light) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text-primary) !important;
+  border-radius: 1rem 1rem 1rem 0.25rem !important;
+}
+
+/* 입력 영역 */
+.news-radar-copilot-chat [class*="input"],
+.news-radar-copilot-chat textarea,
+.news-radar-copilot-chat input[type="text"] {
+  background: var(--glass-bg-light) !important;
+  border: 1px solid var(--glass-border-light) !important;
+  color: var(--text-primary) !important;
+  border-radius: 0.75rem !important;
+}
+
+.news-radar-copilot-chat [class*="input"]:focus-within,
+.news-radar-copilot-chat textarea:focus {
+  border-color: rgba(0, 212, 255, 0.35) !important;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.08) !important;
+}
+
+/* 전송 버튼 */
+.news-radar-copilot-chat button[type="submit"],
+.news-radar-copilot-chat [class*="send-button"] {
+  background: rgba(0, 212, 255, 0.15) !important;
+  border: 1px solid rgba(0, 212, 255, 0.25) !important;
+  color: var(--neon-blue) !important;
+  border-radius: 0.75rem !important;
+}
+
+/* 헤더 */
+.news-radar-copilot-chat [class*="header"],
+.news-radar-copilot-chat .copilot-kit-header {
+  background: rgba(3, 7, 18, 0.8) !important;
+  backdrop-filter: blur(16px) !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 초기 빈 상태 */
+.news-radar-copilot-chat [class*="initial"],
+.news-radar-copilot-chat [class*="empty"] {
+  color: var(--text-secondary) !important;
+}
+
+/* 로딩 인디케이터 */
+.news-radar-copilot-chat [class*="thinking"],
+.news-radar-copilot-chat [class*="loading"] {
+  color: var(--text-muted) !important;
+}
+
+/* ── 도구 실행 결과 UI (AgUiWrapper 커스텀 클래스) ── */
+
+.news-radar-tool-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.news-radar-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 212, 255, 0.2);
+  border-top-color: var(--neon-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.news-radar-tool-empty {
+  padding: 10px 14px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.news-radar-tool-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: #22c55e;
+  font-size: 0.8125rem;
+}
+
+.news-radar-report-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--glass-bg-light);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.news-radar-report-btn:hover {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.25);
+}
+
+.news-radar-report-btn strong {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.news-radar-report-btn small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.news-radar-report-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
