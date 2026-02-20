@@ -42,10 +42,12 @@ import {
   User,
   Copy,
   Check,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import NewsCarousel from "./NewsCarousel";
 import ReportViewer from "./ReportViewer";
+import RagAnswerCard, { type RagAnswerData } from "./RagAnswerCard";
 import type { NewsItem, AgentReport } from "@/types";
 
 /* ─────────────────────────── Types ─────────────────────────── */
@@ -94,18 +96,21 @@ const SYSTEM_INSTRUCTIONS = `
 사용자와 자연스럽게 한국어로 대화하면서, 필요할 때 아래 도구를 사용해.
 
 ## 사용 가능한 도구
-- search_news: DB에서 뉴스를 검색 (keyword 파라미터 옵션)
+- search_news: DB에서 뉴스를 키워드로 검색 (keyword 파라미터 옵션)
 - collect_news: 인터넷에서 최신 뉴스를 크롤링해 수집
 - generate_report: 수집된 뉴스로 일일 브리핑 리포트 생성
+- ask_about_news: 수집된 뉴스 내용을 기반으로 심층 질문에 RAG 방식으로 답변
 
 ## 도구 사용 기준
 - "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news
 - "수집", "크롤링", "새 뉴스 가져와" → collect_news
 - "리포트", "보고서", "브리핑", "요약 정리" → generate_report
+- "왜", "어떻게", "분석해줘", "설명해줘", "~에 대해 자세히", "~의 의미는", "~영향은", "~전망은" → ask_about_news
 - 일반 질문·잡담 → 도구 없이 자연스럽게 대화
 
 ## 주의사항
 - 수집된 뉴스가 없을 때 검색 요청이 오면 먼저 collect_news를 제안해.
+- 뉴스 내용에 대한 깊은 이해·분석이 필요한 질문은 ask_about_news를 사용해.
 - 대화 맥락을 항상 반영해서 일관성 있게 답변해.
 `.trim();
 
@@ -241,6 +246,50 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           뉴스 수집이 시작되었습니다. 잠시 후 검색해 보세요.
         </div>
       );
+    },
+  });
+
+  /* ── Tool: ask_about_news (RAG) ── */
+  useCopilotAction({
+    name: "ask_about_news",
+    description:
+      "수집된 뉴스 기사를 벡터 검색으로 찾아 GPT-4o-mini로 심층 분석 답변을 생성합니다. " +
+      "뉴스 내용에 대한 '왜', '어떻게', '영향', '의미', '전망' 등 분석적 질문에 사용하세요.",
+    parameters: [
+      {
+        name: "question",
+        type: "string",
+        description: "사용자의 자연어 질문 (예: 'AI 반도체 규제가 삼성에 미치는 영향은?')",
+        required: true,
+      },
+    ],
+    handler: async ({ question }: { question: string }) => {
+      const res = await fetch("/api/chat/rag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      if (!res.ok) throw new Error(`RAG 요청 실패 (${res.status})`);
+      return (await res.json()) as RagAnswerData;
+    },
+    render: ({ status, result }) => {
+      if (status !== "complete") {
+        return (
+          <div className="nrc-tool-loading">
+            <span className="nrc-spinner" />
+            <span>뉴스 기사를 분석하고 있습니다…</span>
+          </div>
+        );
+      }
+      if (!result) {
+        return (
+          <div className="nrc-tool-empty">
+            <Brain size={14} style={{ opacity: 0.5 }} />
+            분석 결과를 불러오지 못했습니다.
+          </div>
+        );
+      }
+      return <RagAnswerCard data={result as RagAnswerData} />;
     },
   });
 

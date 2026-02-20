@@ -42,6 +42,8 @@ dependencies {
 	implementation 'org.jsoup:jsoup:1.17.2'
 	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+	implementation 'org.springframework.ai:spring-ai-vector-store'
+	
 }
 
 tasks.named('test') {

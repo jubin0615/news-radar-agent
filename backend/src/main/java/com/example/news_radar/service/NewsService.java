@@ -40,6 +40,7 @@ public class NewsService {
     private final OpenAiService openAiService;
     private final CrawlerManager crawlerManager;
     private final ImportanceEvaluator importanceEvaluator;
+    private final NewsVectorStoreService newsVectorStoreService;
 
     // 수집 중복 실행 방지 플래그
     private final AtomicBoolean collecting = new AtomicBoolean(false);
@@ -140,7 +141,8 @@ public class NewsService {
                         news.setSummary(aiEval.getSummary());
                         news.setImportanceScore(finalScore);
 
-                        newsRepository.save(news);
+                        News savedNews = newsRepository.save(news);
+                        newsVectorStoreService.addOrUpdate(savedNews); // RAG 벡터 인덱싱
                         totalSaved++;
                     }
 

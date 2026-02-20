@@ -1,11 +1,13 @@
 package com.example.news_radar.controller;
 
 import com.example.news_radar.dto.CollectionStatus;
+import com.example.news_radar.dto.NewsTrendResponse;
 import com.example.news_radar.dto.NewsResponse;
 import com.example.news_radar.entity.News;
 import com.example.news_radar.repository.NewsRepository;
 import com.example.news_radar.service.ImportanceEvaluator;
 import com.example.news_radar.service.NewsService;
+import com.example.news_radar.service.NewsTrendService;
 import com.example.news_radar.service.OpenAiService;
 
 import java.util.List;
@@ -26,6 +28,7 @@ public class NewsController {
     private final NewsRepository newsRepository;
     private final OpenAiService openAiService;
     private final NewsService newsService;
+    private final NewsTrendService newsTrendService;
 
     // 전체 뉴스 조회 (중요도 순) - content 제외한 DTO로 반환
     @GetMapping
@@ -71,6 +74,11 @@ public class NewsController {
     @GetMapping("/ai-test")
     public String testAi(@RequestParam String title) {
         return openAiService.getSummary(title);
+    }
+
+    @GetMapping("/trends")
+    public NewsTrendResponse getTrends(@RequestParam(defaultValue = "7") int days) {
+        return newsTrendService.analyzeTrends(days);
     }
 
     // News 엔티티 → NewsResponse DTO 변환 (content 제외)

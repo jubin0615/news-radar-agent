@@ -21,11 +21,12 @@ public class KeywordService {
     }
 
     public Optional<Keyword> addKeyword(String name) {
-        if (keywordRepository.existsByName(name)) {
-            log.warn("키워드 등록 중복: {}", name);
+        String normalized = name.trim().toLowerCase();
+        if (keywordRepository.existsByNameIgnoreCase(normalized)) {
+            log.warn("키워드 등록 중복: {}", normalized);
             return Optional.empty();
         }
-        Keyword keyword = new Keyword(name);
+        Keyword keyword = new Keyword(normalized);
         return Optional.of(keywordRepository.save(keyword));
     }
 

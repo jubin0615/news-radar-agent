@@ -14,8 +14,18 @@ interface Keyword {
   createdAt: string | null;
 }
 
+interface KeywordManagerProps {
+  className?: string;
+  showHeader?: boolean;
+  onKeywordsChange?: (keywords: Keyword[]) => void;
+}
+
 // ── Component ────────────────────────────────────────────────── //
-export default function KeywordManager({ className }: { className?: string }) {
+export default function KeywordManager({
+  className,
+  showHeader = true,
+  onKeywordsChange,
+}: KeywordManagerProps) {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [input, setInput] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -108,27 +118,35 @@ export default function KeywordManager({ className }: { className?: string }) {
 
   const activeCount = keywords.filter((k) => k.enabled).length;
 
+  useEffect(() => {
+    if (!isLoading) {
+      onKeywordsChange?.(keywords);
+    }
+  }, [isLoading, keywords, onKeywordsChange]);
+
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       {/* ── Section Header ─────────── */}
-      <div className="flex items-center gap-2 px-1">
-        <Hash size={14} style={{ color: "var(--neon-blue)" }} strokeWidth={2} />
-        <h2
-          className="text-xs font-semibold uppercase tracking-[0.14em]"
-          style={{ color: "var(--text-secondary)" }}
-        >
+      {showHeader && (
+        <div className="flex items-center gap-2 px-1">
+          <Hash size={14} style={{ color: "var(--neon-blue)" }} strokeWidth={2} />
+          <h2
+            className="text-xs font-semibold uppercase tracking-[0.14em]"
+            style={{ color: "var(--text-secondary)" }}
+          >
           키워드 관리
-        </h2>
-        <span
-          className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums"
-          style={{
-            background: "rgba(0, 212, 255, 0.12)",
-            color: "var(--neon-blue)",
-          }}
-        >
+          </h2>
+          <span
+            className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums"
+            style={{
+              background: "rgba(0, 212, 255, 0.12)",
+              color: "var(--neon-blue)",
+            }}
+          >
           {activeCount}/{keywords.length}
-        </span>
-      </div>
+          </span>
+        </div>
+      )}
 
       {/* ── Input Area ─────────────── */}
       <div

@@ -13,4 +13,7 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     // 이름으로 키워드 존재 여부 확인
     boolean existsByName(String name);
+
+    // 대소문자 무시하고 키워드 존재 여부 확인
+    boolean existsByNameIgnoreCase(String name);
 }

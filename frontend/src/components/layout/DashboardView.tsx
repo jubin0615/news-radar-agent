@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import {
@@ -28,10 +28,9 @@ export default function DashboardView() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const statsRes = await fetch("/api/news/collection-status");
-
-        if (statsRes.ok) {
-          setStats(await statsRes.json());
+        const res = await fetch("/api/news/collection-status");
+        if (res.ok) {
+          setStats(await res.json());
         }
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
@@ -41,7 +40,6 @@ export default function DashboardView() {
     };
 
     fetchData();
-    // 10s polling
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
@@ -59,7 +57,7 @@ export default function DashboardView() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">대시보드</h1>
         <p className="text-sm text-[var(--text-secondary)]">
-          뉴스 수집 현황과 서비스 상태를 한눈에 확인할 수 있습니다.
+          뉴스 수집 현황을 한눈에 확인할 수 있습니다.
         </p>
       </div>
 
@@ -80,7 +78,7 @@ export default function DashboardView() {
         />
         <StatCard
           label="활성 키워드"
-          value={stats?.activeKeywordCount ?? "0"}
+          value={(stats?.activeKeywordCount ?? 0).toLocaleString()}
           icon={Hash}
           glow="mixed"
           delay={0.3}
