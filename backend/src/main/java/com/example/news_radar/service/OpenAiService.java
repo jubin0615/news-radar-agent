@@ -28,7 +28,7 @@ public class OpenAiService {
     }
 
     /**
-     * AI 중요도 평가 - 제목+본문+키워드를 분석해서 JSON으로 결과 반환
+     * AI 중요도 평가 — 3가지 기준(파급력/혁신성/시의성)으로 평가한 결과를 JSON으로 반환
      */
     public AiEvaluation evaluateImportance(String title, String content, List<String> keywords) {
         String trimmedContent = (content != null && content.length() > 1500)
@@ -48,31 +48,35 @@ public class OpenAiService {
                 [관심 키워드]
                 %s
 
+                [평가 기준]
+                - impact(파급력): 이 뉴스가 IT 생태계/산업에 미치는 영향력 (0~20점)
+                - innovation(혁신성): 기술적 참신함과 새로운 관점 제시 여부 (0~15점)
+                - timeliness(시의성): 현재 트렌드와의 관련성 및 시의적절함 (0~15점)
+
                 [응답 형식]
-                {"score": 1에서 10 사이 정수, "reason": "이 뉴스가 중요한 이유 1~2문장", "category": "주요 기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
+                {"impact": 0~20 사이 정수, "innovation": 0~15 사이 정수, "timeliness": 0~15 사이 정수, "reason": "이 뉴스가 중요한 이유 1~2문장", "category": "주요 기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
                 """.formatted(title, trimmedContent, String.join(", ", keywords));
         try {
-            AiEvaluation aiEvaluation = chatClient.prompt()
+            AiEvaluation raw = chatClient.prompt()
                     .user(prompt)
                     .call()
                     .entity(AiEvaluation.class);
 
-            if (aiEvaluation == null) {
-                return new AiEvaluation(5, "분석 실패", "기타", "응답이 비어있습니다.");
+            if (raw == null) {
+                return new AiEvaluation(10, 7, 8, "분석 실패", "기타", "응답이 비어있습니다.");
             }
 
-            int score = Math.max(1, Math.min(10, aiEvaluation.getScore()));
-            String reason = (aiEvaluation.getReason() == null || aiEvaluation.getReason().isBlank())
-                    ? "분석 근거 없음" : aiEvaluation.getReason();
-            String category = (aiEvaluation.getCategory() == null || aiEvaluation.getCategory().isBlank())
-                    ? "기타" : aiEvaluation.getCategory();
-            String summary = (aiEvaluation.getSummary() == null || aiEvaluation.getSummary().isBlank())
-                    ? "요약 없음" : aiEvaluation.getSummary();
+            int impact     = Math.max(0, Math.min(20, raw.impact()));
+            int innovation = Math.max(0, Math.min(15, raw.innovation()));
+            int timeliness = Math.max(0, Math.min(15, raw.timeliness()));
+            String reason   = (raw.reason()   == null || raw.reason().isBlank())   ? "분석 근거 없음" : raw.reason();
+            String category = (raw.category() == null || raw.category().isBlank()) ? "기타"         : raw.category();
+            String summary  = (raw.summary()  == null || raw.summary().isBlank())  ? "요약 없음"    : raw.summary();
 
-            return new AiEvaluation(score, reason, category, summary);
+            return new AiEvaluation(impact, innovation, timeliness, reason, category, summary);
         } catch (Exception e) {
             log.error("AI 중요도 평가 실패: {}", e.getMessage(), e);
-            return new AiEvaluation(5, "분석 실패: " + e.getMessage(), "기타", "요약 생성 실패");
+            return new AiEvaluation(10, 7, 8, "분석 실패: " + e.getMessage(), "기타", "요약 생성 실패");
         }
     }
 }

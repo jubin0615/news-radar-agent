@@ -32,14 +32,17 @@ public class News {
     @Column(columnDefinition = "TEXT")
     private String summary;
 
-    // 최종 중요도 점수 (0~100) = 키워드 매칭(0~50) + AI(0~50)
+    // 최종 중요도 점수 (0~100) = LLM 평가(0~50) + 구조적 연관도(0~30) + 메타데이터 신뢰도(0~20)
     private Integer importanceScore;
 
-    // 키워드 매칭 점수 (0~50)
+    // 구조적/문맥적 연관도 점수 (0~30): 제목·리드 키워드 포함 여부
     private Integer keywordMatchScore;
 
-    // AI가 부여한 점수 (1~10)
+    // LLM 평가 합산 점수 (0~50): 파급력(0~20) + 혁신성(0~15) + 시의성(0~15)
     private Integer aiScore;
+
+    // 메타데이터 신뢰도 점수 (0~20): 출처 도메인 Tier별 차등 부여
+    private Integer metadataScore;
 
     // AI가 중요도를 판단한 근거
     @Column(columnDefinition = "TEXT")

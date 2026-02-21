@@ -107,7 +107,7 @@ export default function FloatingGuide() {
                     <MessageSquare size={20} />
                   </div>
                   <h4 className="mb-3 text-lg font-bold text-[var(--text-primary)]">
-                    3. AI 리포트 + RAG 질의응답
+                    3. AI 리포트
                   </h4>
                   <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
                     <strong>AI 채팅</strong>에서 리포트를 생성한 뒤 궁금한 점을 질문해보세요.

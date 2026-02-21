@@ -14,7 +14,7 @@ export default function Header() {
 
   return (
     <header
-      className="flex h-14 shrink-0 items-center justify-between border-b px-6"
+      className="flex h-16 shrink-0 items-center justify-between border-b px-6"
       style={{
         background: "rgba(3, 7, 18, 0.4)",
         backdropFilter: "blur(16px)",

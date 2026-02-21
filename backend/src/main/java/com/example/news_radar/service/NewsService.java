@@ -124,21 +124,28 @@ public class NewsService {
 
                     // URL 중복 체크 → 새 기사만 분석·저장
                     if (!newsRepository.existsByUrl(item.getUrl())) {
-                        int kwScore = importanceEvaluator.calculateKeywordScore(
-                                item.getTitle(), item.getContent(), keywordNames);
-
+                        // 1. LLM 평가 점수 (최대 50점): 파급력 + 혁신성 + 시의성
                         AiEvaluation aiEval = openAiService.evaluateImportance(
                                 item.getTitle(), item.getContent(), keywordNames);
+                        int llmScore = importanceEvaluator.calculateLlmScore(aiEval);
 
-                        int finalScore = importanceEvaluator.calculateFinalScore(kwScore, aiEval.getScore());
+                        // 2. 구조적/문맥적 연관도 점수 (최대 30점): 제목·리드 키워드 포함 여부
+                        int structuralScore = importanceEvaluator.calculateStructuralScore(
+                                item.getTitle(), item.getContent(), keywordNames);
+
+                        // 3. 메타데이터 신뢰도 점수 (최대 20점): 출처 도메인 Tier
+                        int metadataScore = importanceEvaluator.calculateMetadataScore(item.getUrl());
+
+                        int finalScore = importanceEvaluator.calculateFinalScore(llmScore, structuralScore, metadataScore);
 
                         News news = new News(item.getTitle(), item.getUrl(), keyword.getName());
                         news.setContent(item.getContent());
-                        news.setKeywordMatchScore(kwScore);
-                        news.setAiScore(aiEval.getScore());
-                        news.setAiReason(aiEval.getReason());
-                        news.setCategory(aiEval.getCategory());
-                        news.setSummary(aiEval.getSummary());
+                        news.setAiScore(llmScore);
+                        news.setKeywordMatchScore(structuralScore);
+                        news.setMetadataScore(metadataScore);
+                        news.setAiReason(aiEval.reason());
+                        news.setCategory(aiEval.category());
+                        news.setSummary(aiEval.summary());
                         news.setImportanceScore(finalScore);
 
                         News savedNews = newsRepository.save(news);
