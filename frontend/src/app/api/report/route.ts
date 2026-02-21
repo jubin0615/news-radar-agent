@@ -6,8 +6,58 @@
  */
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+const LOW_GRADE_MAX_SCORE = 39;
 
 export const runtime = "nodejs";
+
+type ReportArticle = {
+  grade?: string | null;
+  importanceScore?: number | null;
+};
+
+type ReportPayload = {
+  stats?: {
+    totalCount?: number;
+    gradeDistribution?: Record<string, number>;
+  };
+  articles?: ReportArticle[];
+};
+
+function isLowImportanceArticle(article: ReportArticle): boolean {
+  if (typeof article.grade === "string" && article.grade.toUpperCase() === "LOW") {
+    return true;
+  }
+  if (typeof article.importanceScore === "number") {
+    return article.importanceScore <= LOW_GRADE_MAX_SCORE;
+  }
+  return false;
+}
+
+function filterReportForUi(payload: ReportPayload): ReportPayload {
+  const articles = Array.isArray(payload.articles)
+    ? payload.articles.filter((article) => !isLowImportanceArticle(article))
+    : payload.articles;
+
+  const stats = payload.stats
+    ? {
+        ...payload.stats,
+        totalCount: Array.isArray(articles) ? articles.length : payload.stats.totalCount,
+        gradeDistribution: payload.stats.gradeDistribution
+          ? Object.fromEntries(
+              Object.entries(payload.stats.gradeDistribution).filter(
+                ([grade]) => grade.toUpperCase() !== "LOW",
+              ),
+            )
+          : payload.stats.gradeDistribution,
+      }
+    : payload.stats;
+
+  return {
+    ...payload,
+    stats,
+    articles,
+  };
+}
 
 /** Retrieve an existing report */
 export async function GET(req: Request) {
@@ -26,7 +76,8 @@ export async function GET(req: Request) {
     });
 
     if (!res.ok) return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
-    return Response.json(await res.json());
+    const payload = (await res.json()) as ReportPayload;
+    return Response.json(filterReportForUi(payload));
   } catch {
     return Response.json({ error: "Backend unreachable" }, { status: 502 });
   }
@@ -42,7 +93,8 @@ export async function POST() {
     });
 
     if (!res.ok) return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
-    return Response.json(await res.json());
+    const payload = (await res.json()) as ReportPayload;
+    return Response.json(filterReportForUi(payload));
   } catch {
     return Response.json({ error: "Backend unreachable" }, { status: 502 });
   }

@@ -214,7 +214,7 @@ export default function KeywordManager({
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, scale: 0.6, filter: "blur(4px)" }}
               transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className="group/chip relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 hover:pr-14"
+              className="group/chip relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 overflow-hidden"
               style={{
                 background: keyword.enabled
                   ? "rgba(0, 212, 255, 0.08)"
@@ -225,45 +225,55 @@ export default function KeywordManager({
               }}
             >
               <span
-                className="select-none"
+                className="select-none truncate max-w-[150px] min-w-[40px] text-center"
                 onClick={() => navigateToNewsWithKeyword(keyword.name)}
                 title={`"${keyword.name}" 뉴스 보기`}
               >
                 {keyword.name}
               </span>
 
-              {/* Toggle button */}
-              <motion.button
-                whileHover={{ scale: 1.2 }}
-                whileTap={{ scale: 0.8 }}
-                onClick={() => toggleKeyword(keyword.id)}
-                className="absolute right-7 flex h-4 w-4 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100"
+              {/* Button Wrapper Overlay */}
+              <div
+                className="absolute right-0 top-0 bottom-0 flex items-center justify-end gap-1.5 pr-1.5 pl-6 opacity-0 transition-opacity duration-200 group-hover/chip:opacity-100 pointer-events-none"
                 style={{
                   background: keyword.enabled
-                    ? "rgba(0, 212, 255, 0.20)"
-                    : "rgba(34, 197, 94, 0.25)",
-                  color: keyword.enabled ? "var(--neon-blue)" : "#22c55e",
+                    ? "linear-gradient(to right, transparent, rgb(3, 23, 37) 30%, rgb(3, 23, 37))"
+                    : "linear-gradient(to right, transparent, rgb(11, 14, 25) 30%, rgb(11, 14, 25))",
                 }}
-                aria-label={`Toggle ${keyword.name}`}
-                title={keyword.enabled ? "비활성화" : "활성화"}
               >
-                <Power size={9} strokeWidth={3} />
-              </motion.button>
+                {/* Toggle button */}
+                <motion.button
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.8 }}
+                  onClick={(e) => { e.stopPropagation(); toggleKeyword(keyword.id); }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full pointer-events-auto"
+                  style={{
+                    background: keyword.enabled
+                      ? "rgba(0, 212, 255, 0.20)"
+                      : "rgba(34, 197, 94, 0.25)",
+                    color: keyword.enabled ? "var(--neon-blue)" : "#22c55e",
+                  }}
+                  aria-label={`Toggle ${keyword.name}`}
+                  title={keyword.enabled ? "비활성화" : "활성화"}
+                >
+                  <Power size={9} strokeWidth={3} />
+                </motion.button>
 
-              {/* Close button */}
-              <motion.button
-                whileHover={{ scale: 1.2 }}
-                whileTap={{ scale: 0.8 }}
-                onClick={() => removeKeyword(keyword.id)}
-                className="absolute right-1.5 flex h-4 w-4 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100"
-                style={{
-                  background: "rgba(239, 68, 68, 0.25)",
-                  color: "#f87171",
-                }}
-                aria-label={`Remove ${keyword.name}`}
-              >
-                <X size={10} strokeWidth={3} />
-              </motion.button>
+                {/* Close button */}
+                <motion.button
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.8 }}
+                  onClick={(e) => { e.stopPropagation(); removeKeyword(keyword.id); }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full pointer-events-auto"
+                  style={{
+                    background: "rgba(239, 68, 68, 0.25)",
+                    color: "#f87171",
+                  }}
+                  aria-label={`Remove ${keyword.name}`}
+                >
+                  <X size={10} strokeWidth={3} />
+                </motion.button>
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
