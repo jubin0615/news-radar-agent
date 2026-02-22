@@ -59,43 +59,43 @@ export default function StatCard({
       transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
       /* ── hover glow ── */
       whileHover={{
-        scale: 1.03,
+        scale: 1.02,
         borderColor: preset.border,
         boxShadow: `${preset.shadow}, 0 12px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)`,
       }}
       className={cn(
         // base glass
-        "glass group relative cursor-default overflow-hidden p-5",
+        "glass group relative cursor-default overflow-hidden p-4",
         "transition-all duration-300 ease-out",
         className,
       )}
     >
       {/* ── Ambient glow orb ── */}
       <div
-        className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100"
+        className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100"
         style={{ background: preset.icon }}
       />
 
-      <div className="relative flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-2.5">
         {/* Left: content */}
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: "var(--text-muted)" }}>
             {label}
           </span>
 
-          <span className="text-3xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+          <span className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
             {value}
           </span>
 
           {subtitle && (
-            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+            <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
               {subtitle}
             </span>
           )}
 
           {trend && (
             <span
-              className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium"
+              className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium"
               style={{ color: trend.positive ? "#10b981" : "#ef4444" }}
             >
               <svg
@@ -118,13 +118,13 @@ export default function StatCard({
 
         {/* Right: icon */}
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
           style={{
             background: `${preset.icon}12`,
             border: `1px solid ${preset.icon}20`,
           }}
         >
-          <Icon size={20} style={{ color: preset.icon }} strokeWidth={1.8} />
+          <Icon size={18} style={{ color: preset.icon }} strokeWidth={1.8} />
         </div>
       </div>
     </motion.div>

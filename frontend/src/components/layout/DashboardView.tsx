@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import StatCard from "@/components/common/StatCard";
 import FloatingGuide from "./FloatingGuide";
+import WelcomeModal from "./WelcomeModal";
+import MorningBriefingHero from "./MorningBriefingHero";
 
 interface DashboardStats {
   totalNewsCount: number;
@@ -51,51 +53,57 @@ export default function DashboardView() {
   }
 
   return (
-    <div className="flex flex-col gap-8 p-2">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">대시보드</h1>
-        <p className="text-sm text-[var(--text-secondary)]">
-          뉴스 수집 현황을 한눈에 확인할 수 있습니다.
-        </p>
-      </div>
+    <>
+      <WelcomeModal />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="전체 수집 뉴스"
-          value={stats?.totalNewsCount.toLocaleString() ?? "0"}
-          icon={Database}
-          glow="blue"
-          delay={0.1}
-        />
-        <StatCard
-          label="오늘 수집"
-          value={stats?.todayNewsCount.toLocaleString() ?? "0"}
-          icon={Calendar}
-          glow="purple"
-          delay={0.2}
-        />
-        <StatCard
-          label="활성 키워드"
-          value={(stats?.activeKeywordCount ?? 0).toLocaleString()}
-          icon={Hash}
-          glow="mixed"
-          delay={0.3}
-        />
-        <StatCard
-          label="수집 상태"
-          value={stats?.collecting ? "수집 중" : "대기 중"}
-          icon={Activity}
-          glow={stats?.collecting ? "blue" : "purple"}
-          delay={0.4}
-          subtitle={
-            stats?.lastCollectedAt
-              ? `마지막 ${new Date(stats.lastCollectedAt).toLocaleTimeString()}`
-              : "-"
-          }
-        />
-      </div>
+      <div className="flex flex-col gap-8 p-2">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">대시보드</h1>
+          <p className="text-sm text-[var(--text-secondary)]">
+            뉴스 수집 현황을 한눈에 확인할 수 있습니다.
+          </p>
+        </div>
 
-      <FloatingGuide />
-    </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="전체 수집 뉴스"
+            value={stats?.totalNewsCount.toLocaleString() ?? "0"}
+            icon={Database}
+            glow="blue"
+            delay={0.1}
+          />
+          <StatCard
+            label="오늘 수집"
+            value={stats?.todayNewsCount.toLocaleString() ?? "0"}
+            icon={Calendar}
+            glow="purple"
+            delay={0.2}
+          />
+          <StatCard
+            label="활성 키워드"
+            value={(stats?.activeKeywordCount ?? 0).toLocaleString()}
+            icon={Hash}
+            glow="mixed"
+            delay={0.3}
+          />
+          <StatCard
+            label="수집 상태"
+            value={stats?.collecting ? "수집 중" : "대기 중"}
+            icon={Activity}
+            glow={stats?.collecting ? "blue" : "purple"}
+            delay={0.4}
+            subtitle={
+              stats?.lastCollectedAt
+                ? `마지막 ${new Date(stats.lastCollectedAt).toLocaleTimeString()}`
+                : "-"
+            }
+          />
+        </div>
+
+        <MorningBriefingHero />
+
+        <FloatingGuide />
+      </div>
+    </>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Search, Hash, Loader2, Power } from "lucide-react";
+import { X, Plus, Search, Hash, Loader2, Power, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useNavigation } from "@/lib/NavigationContext";
 
@@ -12,6 +12,11 @@ interface Keyword {
   name: string;
   enabled: boolean;
   createdAt: string | null;
+}
+
+interface ToastItem {
+  id: number;
+  message: string;
 }
 
 interface KeywordManagerProps {
@@ -30,102 +35,86 @@ export default function KeywordManager({
   const [input, setInput] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [recollectingIds, setRecollectingIds] = useState<Set<number>>(new Set());
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const { navigateToNewsWithKeyword } = useNavigation();
 
-  // ── 초기 로딩: 백엔드에서 키워드 목록 가져오기 ──
-  useEffect(() => {
-    fetchKeywords();
-  }, []);
+  useEffect(() => { fetchKeywords(); }, []);
 
   const fetchKeywords = async () => {
     try {
       const res = await fetch("/api/keywords");
-      if (res.ok) {
-        const data: Keyword[] = await res.json();
-        setKeywords(data);
-      }
-    } catch {
-      /* 네트워크 오류 무시 */
-    } finally {
-      setIsLoading(false);
-    }
+      if (res.ok) setKeywords(await res.json());
+    } catch { /* ignore */ }
+    finally { setIsLoading(false); }
   };
 
-  // ── 키워드 추가 ──
+  const showToast = useCallback((message: string) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  }, []);
+
   const addKeyword = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed) return;
     if (keywords.some((k) => k.name.toLowerCase() === trimmed.toLowerCase())) {
-      setInput("");
-      return;
+      setInput(""); return;
     }
-
     try {
-      const res = await fetch(`/api/keywords?name=${encodeURIComponent(trimmed)}`, {
-        method: "POST",
-      });
+      const res = await fetch(`/api/keywords?name=${encodeURIComponent(trimmed)}`, { method: "POST" });
       if (res.ok) {
         const newKw: Keyword = await res.json();
         setKeywords((prev) => [...prev, newKw]);
       }
-    } catch {
-      /* 네트워크 오류 무시 */
-    }
+    } catch { /* ignore */ }
     setInput("");
   }, [input, keywords]);
 
-  // ── 키워드 삭제 ──
   const removeKeyword = useCallback(async (id: number) => {
     setKeywords((prev) => prev.filter((k) => k.id !== id));
     try {
       await fetch(`/api/keywords/${id}`, { method: "DELETE" });
-    } catch {
-      // 실패 시 다시 로드
-      fetchKeywords();
-    }
+    } catch { fetchKeywords(); }
   }, []);
 
-  // ── 키워드 활성화/비활성화 토글 ──
   const toggleKeyword = useCallback(async (id: number) => {
-    // Optimistic update
-    setKeywords((prev) =>
-      prev.map((k) => (k.id === id ? { ...k, enabled: !k.enabled } : k)),
-    );
+    setKeywords((prev) => prev.map((k) => (k.id === id ? { ...k, enabled: !k.enabled } : k)));
     try {
       const res = await fetch(`/api/keywords/${id}`, { method: "PUT" });
       if (res.ok) {
         const updated: Keyword = await res.json();
-        setKeywords((prev) =>
-          prev.map((k) => (k.id === updated.id ? updated : k)),
-        );
+        setKeywords((prev) => prev.map((k) => (k.id === updated.id ? updated : k)));
       }
-    } catch {
-      fetchKeywords();
-    }
+    } catch { fetchKeywords(); }
   }, []);
 
+  const recollectNews = useCallback(async (keyword: Keyword) => {
+    if (recollectingIds.has(keyword.id)) return;
+    setRecollectingIds((prev) => new Set(prev).add(keyword.id));
+    showToast(`"${keyword.name}" 기존 뉴스가 보관 처리되고 백그라운드에서 새로운 뉴스 수집을 시작합니다.`);
+    try {
+      await fetch(`/api/news/recollect?keyword=${encodeURIComponent(keyword.name)}`, { method: "POST" });
+    } catch { /* ignore */ }
+    finally {
+      setRecollectingIds((prev) => { const next = new Set(prev); next.delete(keyword.id); return next; });
+    }
+  }, [recollectingIds, showToast]);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addKeyword();
-    }
-    // backspace on empty input removes last chip
-    if (e.key === "Backspace" && input === "" && keywords.length > 0) {
-      removeKeyword(keywords[keywords.length - 1].id);
-    }
+    if (e.key === "Enter") { e.preventDefault(); addKeyword(); }
   };
 
   const activeCount = keywords.filter((k) => k.enabled).length;
 
   useEffect(() => {
-    if (!isLoading) {
-      onKeywordsChange?.(keywords);
-    }
+    if (!isLoading) onKeywordsChange?.(keywords);
   }, [isLoading, keywords, onKeywordsChange]);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+
       {/* ── Section Header ─────────── */}
       {showHeader && (
         <div className="flex items-center gap-2 px-1">
@@ -134,26 +123,20 @@ export default function KeywordManager({
             className="text-xs font-semibold uppercase tracking-[0.14em]"
             style={{ color: "var(--text-secondary)" }}
           >
-          키워드 관리
+            키워드 관리
           </h2>
           <span
             className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums"
-            style={{
-              background: "rgba(0, 212, 255, 0.12)",
-              color: "var(--neon-blue)",
-            }}
+            style={{ background: "rgba(0, 212, 255, 0.12)", color: "var(--neon-blue)" }}
           >
-          {activeCount}/{keywords.length}
+            {activeCount}/{keywords.length}
           </span>
         </div>
       )}
 
       {/* ── Input Area ─────────────── */}
       <div
-        className={cn(
-          "group relative flex items-center gap-2 rounded-xl px-3 py-2.5",
-          "transition-all duration-200",
-        )}
+        className="relative flex items-center gap-2 rounded-xl px-3 py-2.5 transition-all duration-200"
         style={{
           background: "var(--glass-bg-light)",
           border: `1px solid ${isFocused ? "rgba(0, 212, 255, 0.35)" : "var(--glass-border)"}`,
@@ -186,105 +169,141 @@ export default function KeywordManager({
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={addKeyword}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors"
-            style={{
-              background: "rgba(0, 212, 255, 0.15)",
-              color: "var(--neon-blue)",
-            }}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "rgba(0, 212, 255, 0.15)", color: "var(--neon-blue)" }}
           >
             <Plus size={14} strokeWidth={2.5} />
           </motion.button>
         )}
       </div>
 
-      {/* ── Keyword Chips ──────────── */}
-      <div className="flex flex-wrap gap-2 px-0.5">
+      {/* ── Keyword List ───────────── */}
+      <div className="flex flex-col gap-1">
         {isLoading ? (
-          <div className="flex w-full items-center justify-center py-3 gap-2">
+          <div className="flex w-full items-center justify-center py-4 gap-2">
             <Loader2 size={14} className="animate-spin" style={{ color: "var(--neon-blue)" }} />
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>불러오는 중…</span>
           </div>
         ) : (
-        <AnimatePresence mode="popLayout">
-          {keywords.map((keyword) => (
-            <motion.div
-              key={keyword.id}
-              layout
-              initial={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.6, filter: "blur(4px)" }}
-              transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className="group/chip relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 overflow-hidden"
-              style={{
-                background: keyword.enabled
-                  ? "rgba(0, 212, 255, 0.08)"
-                  : "rgba(100, 100, 100, 0.08)",
-                border: `1px solid ${keyword.enabled ? "rgba(0, 212, 255, 0.15)" : "rgba(100, 100, 100, 0.15)"}`,
-                color: keyword.enabled ? "var(--neon-blue)" : "var(--text-muted)",
-                opacity: keyword.enabled ? 1 : 0.6,
-              }}
-            >
-              <span
-                className="select-none truncate max-w-[150px] min-w-[40px] text-center"
-                onClick={() => navigateToNewsWithKeyword(keyword.name)}
-                title={`"${keyword.name}" 뉴스 보기`}
-              >
-                {keyword.name}
-              </span>
-
-              {/* Button Wrapper Overlay */}
-              <div
-                className="absolute right-0 top-0 bottom-0 flex items-center justify-end gap-1.5 pr-1.5 pl-6 opacity-0 transition-opacity duration-200 group-hover/chip:opacity-100 pointer-events-none"
+          <AnimatePresence mode="popLayout">
+            {keywords.map((keyword) => (
+              <motion.div
+                key={keyword.id}
+                layout
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 8, transition: { duration: 0.15 } }}
+                transition={{ type: "spring", stiffness: 380, damping: 24 }}
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2"
                 style={{
-                  background: keyword.enabled
-                    ? "linear-gradient(to right, transparent, rgb(3, 23, 37) 30%, rgb(3, 23, 37))"
-                    : "linear-gradient(to right, transparent, rgb(11, 14, 25) 30%, rgb(11, 14, 25))",
+                  background: "var(--glass-bg-light)",
+                  border: `1px solid ${keyword.enabled ? "rgba(0, 212, 255, 0.10)" : "var(--glass-border)"}`,
                 }}
               >
-                {/* Toggle button */}
-                <motion.button
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.8 }}
-                  onClick={(e) => { e.stopPropagation(); toggleKeyword(keyword.id); }}
-                  className="flex h-4 w-4 items-center justify-center rounded-full pointer-events-auto"
+                {/* ── 상태 인디케이터 dot ── */}
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{
-                    background: keyword.enabled
-                      ? "rgba(0, 212, 255, 0.20)"
-                      : "rgba(34, 197, 94, 0.25)",
-                    color: keyword.enabled ? "var(--neon-blue)" : "#22c55e",
+                    background: keyword.enabled ? "var(--neon-blue)" : "var(--text-muted)",
+                    boxShadow: keyword.enabled ? "0 0 6px rgba(0,212,255,0.6)" : "none",
                   }}
-                  aria-label={`Toggle ${keyword.name}`}
-                  title={keyword.enabled ? "비활성화" : "활성화"}
+                />
+
+                {/* ── 키워드 이름 ── */}
+                <button
+                  className="flex-1 truncate text-left text-xs font-medium"
+                  style={{ color: keyword.enabled ? "var(--text-primary)" : "var(--text-muted)" }}
+                  onClick={() => navigateToNewsWithKeyword(keyword.name)}
+                  title={`"${keyword.name}" 뉴스 보기`}
                 >
-                  <Power size={9} strokeWidth={3} />
+                  {keyword.name}
+                </button>
+
+                {/* ── 뉴스 다시 수집 버튼 ── */}
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => recollectNews(keyword)}
+                  disabled={recollectingIds.has(keyword.id)}
+                  className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold transition-colors disabled:opacity-50"
+                  style={{
+                    background: "rgba(251, 191, 36, 0.10)",
+                    border: "1px solid rgba(251, 191, 36, 0.20)",
+                    color: "#fbbf24",
+                  }}
+                  title="뉴스 다시 수집"
+                >
+                  <RefreshCw
+                    size={9}
+                    strokeWidth={2.5}
+                    className={recollectingIds.has(keyword.id) ? "animate-spin" : ""}
+                  />
+                  <span>재수집</span>
                 </motion.button>
 
-                {/* Close button */}
+                {/* ── 활성/비활성 토글 ── */}
                 <motion.button
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.8 }}
-                  onClick={(e) => { e.stopPropagation(); removeKeyword(keyword.id); }}
-                  className="flex h-4 w-4 items-center justify-center rounded-full pointer-events-auto"
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.85 }}
+                  onClick={() => toggleKeyword(keyword.id)}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors"
                   style={{
-                    background: "rgba(239, 68, 68, 0.25)",
-                    color: "#f87171",
+                    background: keyword.enabled ? "rgba(0, 212, 255, 0.12)" : "rgba(34, 197, 94, 0.15)",
+                    color: keyword.enabled ? "var(--neon-blue)" : "#22c55e",
                   }}
-                  aria-label={`Remove ${keyword.name}`}
+                  aria-label={keyword.enabled ? "비활성화" : "활성화"}
+                  title={keyword.enabled ? "비활성화" : "활성화"}
                 >
-                  <X size={10} strokeWidth={3} />
+                  <Power size={10} strokeWidth={2.5} />
                 </motion.button>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+
+                {/* ── 삭제 ── */}
+                <motion.button
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.85 }}
+                  onClick={() => removeKeyword(keyword.id)}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors"
+                  style={{ background: "rgba(239, 68, 68, 0.12)", color: "#f87171" }}
+                  aria-label={`${keyword.name} 삭제`}
+                  title="삭제"
+                >
+                  <X size={10} strokeWidth={2.5} />
+                </motion.button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
 
         {!isLoading && keywords.length === 0 && (
-          <p className="py-3 text-center text-xs w-full" style={{ color: "var(--text-muted)" }}>
+          <p className="py-4 text-center text-xs" style={{ color: "var(--text-muted)" }}>
             모니터링할 키워드를 추가하세요
           </p>
         )}
       </div>
+
+      {/* ── Toast Notifications ────── */}
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.96 }}
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-5 right-5 z-50 flex max-w-sm items-start gap-2.5 rounded-xl px-4 py-3 text-xs shadow-lg"
+            style={{
+              background: "rgba(15, 23, 35, 0.95)",
+              border: "1px solid rgba(251, 191, 36, 0.30)",
+              color: "var(--text-primary)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 0 24px rgba(251, 191, 36, 0.08)",
+            }}
+          >
+            <RefreshCw size={13} className="mt-0.5 shrink-0" style={{ color: "#fbbf24" }} strokeWidth={2.5} />
+            <span className="leading-relaxed">{toast.message}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

@@ -64,6 +64,12 @@ public class NewsController {
         return newsService.manualCollect();
     }
 
+    // 키워드 재수집: 기존 뉴스 소프트 삭제 후 백그라운드 신규 수집 (즉시 반환)
+    @PostMapping("/recollect")
+    public String recollectNews(@RequestParam String keyword) {
+        return newsService.recollectByKeyword(keyword);
+    }
+
     // 수집 현황 조회 (대시보드용)
     @GetMapping("/collection-status")
     public CollectionStatus getCollectionStatus() {

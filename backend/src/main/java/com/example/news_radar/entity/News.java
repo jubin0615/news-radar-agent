@@ -57,10 +57,15 @@ public class News {
     // 기사 발행일
     private String published;
 
+    // 소프트 삭제 여부: true = 활성(기본), false = 보관/비활성
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean isActive = true;
+
     public News(String title, String url, String keyword) {
         this.title = title;
         this.url = url;
         this.keyword = keyword;
         this.collectedAt = LocalDateTime.now();
+        this.isActive = true;
     }
 }
