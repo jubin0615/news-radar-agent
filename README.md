@@ -14,7 +14,7 @@
 ## 🛠 Tech Stack
 
 ### Backend
-* **Framework:** Java 21, Spring Boot 3.5.10
+* **Framework:** Java+Spring Boot
 * **AI & Data:** Spring AI, OpenAI API (GPT-4o-mini), SimpleVectorStore (In-Memory RAG)
 * **Database:** Spring Data JPA, H2 Database
 * **Crawling:** Jsoup (Naver News)
