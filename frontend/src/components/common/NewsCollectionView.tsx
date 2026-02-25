@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useNavigation } from "@/lib/NavigationContext";
+import { useCollectionSSE } from "@/hooks/useCollectionSSE";
 import type { NewsItem, NewsGrade } from "@/types";
 
 // ── Grade styles ─────────────────────────────────────────────── //
@@ -77,32 +78,63 @@ function formatRelativeTime(isoString: string): string {
 
 // ── Component ────────────────────────────────────────────────── //
 export default function NewsCollectionView({ className }: { className?: string }) {
-  const { selectedKeyword, clearSelectedKeyword } = useNavigation();
+  const {
+    selectedKeyword,
+    selectedDate,
+    clearSelectedKeyword,
+    clearSelectedDate,
+  } = useNavigation();
 
   const [news, setNews] = useState<NewsItem[]>([]);
   const [status, setStatus] = useState<CollectionStatus | null>(null);
   const [isLoadingNews, setIsLoadingNews] = useState(true);
-  const [isCollecting, setIsCollecting] = useState(false);
   const [collectMessage, setCollectMessage] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [activeDate, setActiveDate] = useState<string | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+
+  // SSE 실시간 진행률
+  const {
+    isStreaming,
+    latestEvent,
+    percentage,
+    startStream,
+  } = useCollectionSSE();
+
+  // 수집 중 여부: SSE 스트리밍 OR 백엔드 상태 (스케줄러/CopilotKit 트리거 대응)
+  const isCollecting = isStreaming || (status?.collecting ?? false);
 
   // Sync selected keyword from context
   useEffect(() => {
     if (selectedKeyword) {
       setActiveFilter(selectedKeyword);
       setSearchInput(selectedKeyword);
+      setActiveDate(null);
+      clearSelectedDate();
     }
-  }, [selectedKeyword]);
+  }, [selectedKeyword, clearSelectedDate]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      setActiveDate(selectedDate);
+      setActiveFilter(null);
+      setSearchInput("");
+      clearSelectedKeyword();
+    }
+  }, [selectedDate, clearSelectedKeyword]);
 
   // ── Fetch news ──
-  const fetchNews = useCallback(async (keyword?: string | null) => {
+  const fetchNews = useCallback(async (filters?: { keyword?: string | null; date?: string | null }) => {
     setIsLoadingNews(true);
     try {
-      const url = keyword
-        ? `/api/news?keyword=${encodeURIComponent(keyword)}`
-        : "/api/news";
+      const keyword = filters?.keyword?.trim() || null;
+      const date = filters?.date || null;
+      const url = date
+        ? `/api/news?date=${encodeURIComponent(date)}`
+        : keyword
+          ? `/api/news?keyword=${encodeURIComponent(keyword)}`
+          : "/api/news";
       const res = await fetch(url);
       if (res.ok) {
         const data: NewsItem[] = await res.json();
@@ -122,52 +154,48 @@ export default function NewsCollectionView({ className }: { className?: string }
       if (res.ok) {
         const data: CollectionStatus = await res.json();
         setStatus(data);
-        setIsCollecting(data.collecting);
       }
     } catch {
       /* ignore */
     }
   }, []);
 
+  const fetchWithCurrentFilters = useCallback(() => {
+    fetchNews({ keyword: activeFilter, date: activeDate });
+  }, [fetchNews, activeFilter, activeDate]);
+
   // Initial load
   useEffect(() => {
-    fetchNews(activeFilter);
+    fetchWithCurrentFilters();
     fetchStatus();
-  }, [fetchNews, fetchStatus, activeFilter]);
+  }, [fetchWithCurrentFilters, fetchStatus]);
 
-  // Poll status while collecting
+  // Poll status while collecting (스케줄러/CopilotKit 트리거 대응 폴백)
   useEffect(() => {
-    if (!isCollecting) return;
+    if (!isCollecting || isStreaming) return;
     const interval = setInterval(() => {
       fetchStatus();
-      fetchNews(activeFilter);
+      fetchWithCurrentFilters();
     }, 5000);
     return () => clearInterval(interval);
-  }, [isCollecting, fetchStatus, fetchNews, activeFilter]);
+  }, [isCollecting, isStreaming, fetchStatus, fetchWithCurrentFilters]);
 
-  // ── Trigger collection ──
-  const handleCollect = async () => {
-    setIsCollecting(true);
-    setCollectMessage(null);
-    try {
-      const res = await fetch("/api/news/collect", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        setCollectMessage(data.message || "뉴스 수집을 시작했습니다.");
-      } else {
-        setCollectMessage("뉴스 수집 요청에 실패했습니다.");
-        setIsCollecting(false);
-      }
-    } catch {
-      setCollectMessage("백엔드 서버에 연결할 수 없습니다.");
-      setIsCollecting(false);
-    }
-
-    // Auto-refresh after some time
-    setTimeout(() => {
+  // SSE 스트림 완료 시 데이터 갱신
+  useEffect(() => {
+    if (!isStreaming && latestEvent?.type === "COMPLETED") {
+      fetchWithCurrentFilters();
       fetchStatus();
-      fetchNews(activeFilter);
-    }, 8000);
+      setCollectMessage(`수집 완료! ${latestEvent.count ?? 0}건의 뉴스가 저장되었습니다.`);
+    }
+    if (!isStreaming && latestEvent?.type === "ERROR") {
+      setCollectMessage(latestEvent.message || "수집 중 오류가 발생했습니다.");
+    }
+  }, [isStreaming, latestEvent, fetchWithCurrentFilters, fetchStatus]);
+
+  // ── Trigger collection (SSE 기반) ──
+  const handleCollect = () => {
+    setCollectMessage(null);
+    startStream();
   };
 
   // ── Search / Filter ──
@@ -175,18 +203,33 @@ export default function NewsCollectionView({ className }: { className?: string }
     const trimmed = searchInput.trim();
     if (trimmed) {
       setActiveFilter(trimmed);
+      setActiveDate(null);
+      clearSelectedDate();
     } else {
       setActiveFilter(null);
+      setActiveDate(null);
       clearSelectedKeyword();
+      clearSelectedDate();
     }
   };
 
   const handleClearFilter = () => {
     setActiveFilter(null);
+    setActiveDate(null);
     setSearchInput("");
     clearSelectedKeyword();
-    fetchNews(null);
+    clearSelectedDate();
   };
+
+  const handleTodayFilter = () => {
+    const today = new Date().toISOString().split("T")[0];
+    setActiveDate(today);
+    setActiveFilter(null);
+    setSearchInput("");
+    clearSelectedKeyword();
+  };
+
+  const isTodayFilterActive = activeDate === new Date().toISOString().split("T")[0];
 
   return (
     <div className={cn("flex h-full flex-col gap-5", className)}>
@@ -266,13 +309,36 @@ export default function NewsCollectionView({ className }: { className?: string }
               value: status.activeKeywordCount,
               icon: Tag,
             },
-          ].map(({ label, value, icon: Icon }) => (
+          ].map(({ label, value, icon: Icon }) => {
+            const isTodayCard = Icon === TrendingUp;
+            const cardOnClick = isTodayCard ? handleTodayFilter : undefined;
+            const isActive = isTodayCard && isTodayFilterActive;
+
+            return (
             <div
               key={label}
-              className="flex items-center gap-2 rounded-lg px-3 py-2"
+              onClick={cardOnClick}
+              role={cardOnClick ? "button" : undefined}
+              tabIndex={cardOnClick ? 0 : undefined}
+              onKeyDown={
+                cardOnClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        cardOnClick();
+                      }
+                    }
+                  : undefined
+              }
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-2",
+                cardOnClick && "cursor-pointer transition-all duration-200",
+              )}
               style={{
-                background: "var(--glass-bg)",
-                border: "1px solid var(--glass-border)",
+                background: isActive ? "rgba(0,212,255,0.12)" : "var(--glass-bg)",
+                border: isActive
+                  ? "1px solid rgba(0,212,255,0.35)"
+                  : "1px solid var(--glass-border)",
               }}
             >
               <Icon
@@ -293,7 +359,8 @@ export default function NewsCollectionView({ className }: { className?: string }
                 {value}
               </span>
             </div>
-          ))}
+            );
+          })}
           {status.lastCollectedAt && (
             <div
               className="flex items-center gap-2 rounded-lg px-3 py-2"
@@ -318,9 +385,61 @@ export default function NewsCollectionView({ className }: { className?: string }
         </div>
       )}
 
-      {/* ── Collect message ── */}
+      {/* ── SSE 실시간 진행률 ── */}
       <AnimatePresence>
-        {collectMessage && (
+        {isStreaming && latestEvent && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex flex-col gap-2.5 rounded-xl px-4 py-3"
+            style={{
+              background: "rgba(0,212,255,0.06)",
+              border: "1px solid rgba(0,212,255,0.15)",
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <Loader2
+                size={14}
+                className="animate-spin shrink-0"
+                style={{ color: "var(--neon-blue)" }}
+              />
+              <span
+                className="text-sm font-medium"
+                style={{ color: "var(--neon-blue)" }}
+              >
+                {latestEvent.message}
+              </span>
+              {percentage > 0 && (
+                <span
+                  className="ml-auto text-xs font-bold tabular-nums"
+                  style={{ color: "var(--neon-blue)" }}
+                >
+                  {percentage}%
+                </span>
+              )}
+            </div>
+            {percentage > 0 && (
+              <div
+                className="h-1.5 w-full rounded-full overflow-hidden"
+                style={{ background: "rgba(0,212,255,0.10)" }}
+              >
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: "var(--neon-blue)" }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${percentage}%` }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Collect message (완료/오류) ── */}
+      <AnimatePresence>
+        {!isStreaming && collectMessage && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -332,11 +451,7 @@ export default function NewsCollectionView({ className }: { className?: string }
               color: "var(--neon-blue)",
             }}
           >
-            {isCollecting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
+            <CheckCircle2 size={14} />
             {collectMessage}
           </motion.div>
         )}
@@ -364,7 +479,7 @@ export default function NewsCollectionView({ className }: { className?: string }
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]"
             style={{ color: "var(--text-primary)" }}
           />
-          {activeFilter && (
+          {(activeFilter || activeDate) && (
             <button onClick={handleClearFilter}>
               <X size={14} style={{ color: "var(--text-muted)" }} />
             </button>
@@ -387,7 +502,7 @@ export default function NewsCollectionView({ className }: { className?: string }
       </div>
 
       {/* ── Active filter chip ── */}
-      {activeFilter && (
+      {(activeFilter || activeDate) && (
         <div className="flex items-center gap-2">
           <span
             className="text-xs font-medium"
@@ -404,7 +519,7 @@ export default function NewsCollectionView({ className }: { className?: string }
             }}
           >
             <Tag size={10} />
-            {activeFilter}
+            {activeFilter ?? (isTodayFilterActive ? "오늘 수집" : activeDate)}
             <button
               onClick={handleClearFilter}
               className="ml-1 rounded-full p-0.5 hover:bg-[rgba(0,212,255,0.15)]"

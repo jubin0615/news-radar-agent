@@ -2,17 +2,17 @@
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
-// ── Tab types ────────────────────────────────────────────────── //
 export type TabId = "dashboard" | "news" | "chat";
 
 interface NavigationContextValue {
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
-  /** 키워드 클릭 시 뉴스 수집 탭으로 이동하며 해당 키워드로 필터링 */
   navigateToNewsWithKeyword: (keyword: string) => void;
-  /** 현재 선택된 키워드 필터 (뉴스 탭에서 사용) */
+  navigateToTodayNews: () => void;
   selectedKeyword: string | null;
+  selectedDate: string | null;
   clearSelectedKeyword: () => void;
+  clearSelectedDate: () => void;
 }
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
@@ -20,14 +20,27 @@ const NavigationContext = createContext<NavigationContextValue | null>(null);
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const navigateToNewsWithKeyword = useCallback((keyword: string) => {
     setSelectedKeyword(keyword);
+    setSelectedDate(null);
+    setActiveTab("news");
+  }, []);
+
+  const navigateToTodayNews = useCallback(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setSelectedKeyword(null);
+    setSelectedDate(today);
     setActiveTab("news");
   }, []);
 
   const clearSelectedKeyword = useCallback(() => {
     setSelectedKeyword(null);
+  }, []);
+
+  const clearSelectedDate = useCallback(() => {
+    setSelectedDate(null);
   }, []);
 
   return (
@@ -36,8 +49,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         activeTab,
         setActiveTab,
         navigateToNewsWithKeyword,
+        navigateToTodayNews,
         selectedKeyword,
+        selectedDate,
         clearSelectedKeyword,
+        clearSelectedDate,
       }}
     >
       {children}

@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 뉴스 전용 리포지토리 - 필터링·정렬 쿼리 메서드 모음
@@ -16,8 +17,12 @@ import java.util.Optional;
  */
 public interface NewsRepository extends JpaRepository<News, Long> {
 
-    // URL 중복 체크 — 활성 뉴스 기준 (소프트 삭제된 기사는 재수집 허용)
-    boolean existsByUrlAndIsActiveTrue(String url);
+    // URL 중복 체크 — 전체 뉴스 기준 (비활성 이력 포함, 중복 수집 방지)
+    boolean existsByUrl(String url);
+
+    // 전체 URL 목록 조회 — Early Exit용 (크롤링 전 DB 중복 필터링)
+    @Query("SELECT n.url FROM News n")
+    Set<String> findAllUrls();
 
     // 키워드의 기존 뉴스를 비활성화 (소프트 삭제) — 재수집 시 호출
     @Modifying
@@ -62,4 +67,11 @@ public interface NewsRepository extends JpaRepository<News, Long> {
 
     // 가장 최근 수집된 활성 뉴스 (마지막 수집 시각 조회용)
     Optional<News> findTopByIsActiveTrueOrderByCollectedAtDesc();
+
+    // Vector Store 재빌드용: 특정 키워드 목록 + 최소 점수 + 기간 필터
+    @Query("SELECT n FROM News n WHERE n.isActive = true " +
+           "AND n.keyword IN :keywords " +
+           "AND n.importanceScore > :minScore " +
+           "AND n.collectedAt >= :since")
+    List<News> findForVectorStore(List<String> keywords, int minScore, LocalDateTime since);
 }

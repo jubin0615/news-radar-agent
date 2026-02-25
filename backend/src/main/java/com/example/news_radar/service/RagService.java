@@ -4,6 +4,8 @@ import com.example.news_radar.dto.RagResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,8 +20,9 @@ import java.util.stream.Collectors;
 @Service
 public class RagService {
 
-    private static final int    TOP_K     = 5;
-    private static final double THRESHOLD = 0.30;
+    private static final int    TOP_K                    = 5;
+    private static final double THRESHOLD                = 0.30;
+    private static final int    MIN_IMPORTANCE_SCORE     = 60;
 
     private final NewsVectorStoreService vectorStoreService;
     private final ChatClient             chatClient;
@@ -39,8 +42,11 @@ public class RagService {
      * @return 생성된 답변 + 참고 기사 목록
      */
     public RagResponse ask(String question) {
-        // 1. 벡터 검색으로 관련 뉴스 검색
-        List<Document> retrieved = vectorStoreService.search(question, TOP_K, THRESHOLD);
+        // 1. 벡터 검색으로 관련 뉴스 검색 (importanceScore >= 60 필터 적용)
+        Filter.Expression filter = new FilterExpressionBuilder()
+                .gte("importanceScore", MIN_IMPORTANCE_SCORE)
+                .build();
+        List<Document> retrieved = vectorStoreService.search(question, TOP_K, THRESHOLD, filter);
         log.info("[RAG] 질문='{}' 검색결과={}건", question, retrieved.size());
 
         if (retrieved.isEmpty()) {
@@ -54,13 +60,20 @@ public class RagService {
         // 2. 검색된 기사를 번호가 붙은 컨텍스트 블록으로 변환
         String context = buildContext(retrieved);
 
-        // 3. RAG 프롬프트 구성
+        // 3. RAG 프롬프트 구성 (Explicit Citation + Hallucination 방지 강화)
         String prompt = """
                 너는 IT 기술 뉴스 분석 전문가야.
-                아래 [참고 기사] 섹션에 실제로 수집된 뉴스 기사들이 있어.
-                이 기사들만을 근거로 사용자의 질문에 정확하고 상세하게 한국어로 답변해줘.
-                참고 기사에 없는 내용은 절대 지어내지 마.
-                답변 마지막에 어떤 번호의 기사를 참고했는지 표시해줘.
+                아래 [참고 기사] 섹션에 번호가 매겨진 실제 뉴스 기사들이 있어.
+                반드시 아래 규칙을 엄격하게 지켜서 한국어로 답변해.
+
+                [필수 규칙]
+                1. 답변의 모든 정보는 반드시 [참고 기사]에 있는 내용에서만 가져와야 한다.
+                2. 각 문장의 끝에 반드시 해당 정보의 출처인 기사 번호를 [1], [2], [3] 형식으로 표기해라.
+                   한 문장에 여러 기사를 참고했다면 [1][3]처럼 병기해라.
+                3. [참고 기사]에 없는 내용은 절대로 지어내거나 추측하지 마라.
+                   만약 질문에 대한 정보가 참고 기사에 부족하면,
+                   "제공된 기사에서는 해당 정보를 확인할 수 없습니다."라고 솔직하게 답변해라.
+                4. 답변 마지막에 '---' 구분선 아래에 참고한 기사 번호와 제목을 목록으로 정리해라.
 
                 [참고 기사]
                 %s
@@ -102,6 +115,7 @@ public class RagService {
             sb.append("[").append(i + 1).append("] ");
             sb.append("제목: ").append(meta(doc, "title")).append("\n");
             sb.append("키워드: ").append(meta(doc, "keyword")).append("\n");
+            sb.append("본문: ").append(doc.getText()).append("\n");
             sb.append("요약: ").append(meta(doc, "summary")).append("\n");
             sb.append("AI 분석: ").append(meta(doc, "aiReason")).append("\n\n");
         }

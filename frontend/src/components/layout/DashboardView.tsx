@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Activity,
-  Calendar,
-  Database,
-  Hash,
-  Loader2,
-} from "lucide-react";
+import { Activity, Calendar, Database, Hash, Loader2 } from "lucide-react";
 import StatCard from "@/components/common/StatCard";
 import FloatingGuide from "./FloatingGuide";
 import WelcomeModal from "./WelcomeModal";
 import MorningBriefingHero from "./MorningBriefingHero";
+import { useNavigation } from "@/lib/NavigationContext";
 
 interface DashboardStats {
   totalNewsCount: number;
@@ -24,6 +19,7 @@ interface DashboardStats {
 export default function DashboardView() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const { navigateToTodayNews } = useNavigation();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,6 +74,7 @@ export default function DashboardView() {
             icon={Calendar}
             glow="purple"
             delay={0.2}
+            onClick={navigateToTodayNews}
           />
           <StatCard
             label="활성 키워드"

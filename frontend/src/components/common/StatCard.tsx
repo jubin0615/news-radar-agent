@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { type LucideIcon } from "lucide-react";
+import { type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 
 // ── Types ────────────────────────────────────────────────────── //
@@ -16,6 +17,7 @@ interface StatCardProps {
   trend?: { value: number; positive: boolean };
   delay?: number;
   className?: string;
+  onClick?: () => void;
 }
 
 // ── Glow Presets ─────────────────────────────────────────────── //
@@ -48,8 +50,18 @@ export default function StatCard({
   trend,
   delay = 0,
   className,
+  onClick,
 }: StatCardProps) {
   const preset = glowMap[glow];
+  const isClickable = typeof onClick === "function";
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!isClickable) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.();
+    }
+  };
 
   return (
     <motion.div
@@ -63,10 +75,16 @@ export default function StatCard({
         borderColor: preset.border,
         boxShadow: `${preset.shadow}, 0 12px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)`,
       }}
+      whileTap={isClickable ? { scale: 0.99 } : undefined}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
       className={cn(
         // base glass
-        "glass group relative cursor-default overflow-hidden p-4",
+        "glass group relative overflow-hidden p-4",
         "transition-all duration-300 ease-out",
+        isClickable ? "cursor-pointer" : "cursor-default",
         className,
       )}
     >

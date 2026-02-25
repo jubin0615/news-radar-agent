@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 type NewsApiItem = {
   grade?: string | null;
   importanceScore?: number | null;
+  collectedAt?: string | null;
 };
 
 function isLowImportance(item: NewsApiItem): boolean {
@@ -28,10 +29,13 @@ function isLowImportance(item: NewsApiItem): boolean {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const keyword = searchParams.get("keyword");
+  const date = searchParams.get("date");
 
-  const backendPath = keyword
-    ? `${BACKEND_URL}/api/news/search?keyword=${encodeURIComponent(keyword)}`
-    : `${BACKEND_URL}/api/news`;
+  const backendPath = date
+    ? `${BACKEND_URL}/api/news?date=${encodeURIComponent(date)}`
+    : keyword
+      ? `${BACKEND_URL}/api/news/search?keyword=${encodeURIComponent(keyword)}`
+      : `${BACKEND_URL}/api/news`;
 
   try {
     const res = await fetch(backendPath, {
@@ -48,7 +52,13 @@ export async function GET(req: Request) {
       return Response.json(data);
     }
 
-    const filtered = data.filter((item) => !isLowImportance(item as NewsApiItem));
+    let filtered = data.filter((item) => !isLowImportance(item as NewsApiItem));
+    if (date) {
+      filtered = filtered.filter((item) => {
+        const collectedAt = (item as NewsApiItem).collectedAt;
+        return typeof collectedAt === "string" && collectedAt.startsWith(date);
+      });
+    }
     return Response.json(filtered);
   } catch {
     return Response.json({ error: "Backend unreachable" }, { status: 502 });

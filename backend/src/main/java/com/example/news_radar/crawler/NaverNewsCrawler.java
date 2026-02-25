@@ -2,6 +2,7 @@ package com.example.news_radar.crawler;
 
 import com.example.news_radar.dto.RawNewsItem;
 
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -15,7 +16,13 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,6 +32,10 @@ import java.util.regex.Pattern;
 public class NaverNewsCrawler implements NewsCrawler {
 
     private static final int MAX_ITEMS_PER_KEYWORD = 8;
+    private static final int CONTENT_FETCH_POOL_SIZE = 4;
+    private static final int CONTENT_FETCH_TIMEOUT_SECONDS = 30;
+    private static final int STAGGER_DELAY_MS = 200;
+
     private static final Pattern SEARCH_BASIC_TITLE_PATTERN = Pattern.compile(
             "\"title\":\"((?:\\\\\"|[^\"])*)\",\"titleHref\":\"((?:\\\\\"|[^\"])*)\",\"type\":\"searchBasic\"");
     private static final Pattern UNICODE_ESCAPE_PATTERN = Pattern.compile("\\\\u([0-9a-fA-F]{4})");
@@ -36,52 +47,168 @@ public class NaverNewsCrawler implements NewsCrawler {
     };
 
     private final Random random = new Random();
+    private final ExecutorService contentFetchExecutor =
+            Executors.newFixedThreadPool(CONTENT_FETCH_POOL_SIZE, r -> {
+                Thread t = new Thread(r, "content-fetch");
+                t.setDaemon(true);
+                return t;
+            });
+
+    @PreDestroy
+    public void shutdown() {
+        contentFetchExecutor.shutdown();
+        try {
+            if (!contentFetchExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                contentFetchExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            contentFetchExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
 
     @Override
     public List<RawNewsItem> crawl(String keyword) {
-        List<RawNewsItem> results = new ArrayList<>();
+        return crawl(keyword, Set.of());
+    }
 
+    @Override
+    public List<RawNewsItem> crawl(String keyword, Set<String> knownUrls) {
         try {
-            String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
-            // sort=1: 최신순 정렬
-            String searchUrl = "https://search.naver.com/search.naver?where=news&query="
-                    + encodedKeyword + "&sort=1";
+            // 1단계: 제목+링크만 수집 (본문 크롤링 없이)
+            List<TitleAndLink> titleAndLinks = extractTitleAndLinks(keyword);
 
-            String ua = USER_AGENTS[random.nextInt(USER_AGENTS.length)];
-
-            Document doc = Jsoup.connect(searchUrl)
-                    .userAgent(ua)
-                    .referrer("https://www.naver.com")
-                    .header("Accept", "text/html,application/xhtml+xml")
-                    .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
-                    .timeout(15000)
-                    .get();
-
-            // 구형(서버 렌더링) DOM 셀렉터
-            Elements newsItems = doc.select(".news_tit");
-            if (!newsItems.isEmpty()) {
-                log.info("[네이버] keyword={}, legacy selector hit {}건", keyword, newsItems.size());
-                int limit = Math.min(newsItems.size(), MAX_ITEMS_PER_KEYWORD);
-                for (int i = 0; i < limit; i++) {
-                    Element item = newsItems.get(i);
-                    String title = item.text();
-                    String link = item.attr("href");
-                    addCrawledItem(results, title, link);
-                }
-            } else {
-                // 신형(클라이언트 렌더링) 페이지는 HTML 내부 JSON payload에서 기사 정보를 추출
-                int extracted = extractFromEmbeddedPayload(doc.html(), results);
-                log.info("[네이버] keyword={}, payload fallback hit {}건", keyword, extracted);
+            if (titleAndLinks.isEmpty()) {
+                return List.of();
             }
+
+            // Early Exit: DB에 이미 존재하는 URL 필터링 (본문 크롤링 전)
+            if (!knownUrls.isEmpty()) {
+                int beforeCount = titleAndLinks.size();
+                titleAndLinks = titleAndLinks.stream()
+                        .filter(item -> !knownUrls.contains(item.link()))
+                        .toList();
+
+                int skipped = beforeCount - titleAndLinks.size();
+                if (skipped > 0) {
+                    log.info("[네이버] keyword={}, {}건 중 {}건 기존 URL → 본문 크롤링 생략",
+                            keyword, beforeCount, skipped);
+                }
+
+                if (titleAndLinks.isEmpty()) {
+                    log.info("[네이버] keyword={}, 모든 기사가 기존 URL → 전체 생략", keyword);
+                    return List.of();
+                }
+            }
+
+            // 2단계: 신규 URL만 본문 크롤링을 CompletableFuture로 병렬 실행
+            return fetchContentsInParallel(titleAndLinks);
 
         } catch (IOException e) {
             log.error("[네이버] 크롤링 실패. keyword={}, error={}", keyword, e.getMessage());
+            return List.of();
         }
-
-        return results;
     }
 
-    private int extractFromEmbeddedPayload(String html, List<RawNewsItem> results) {
+    /**
+     * 1단계: 네이버 검색 결과에서 제목+링크만 추출 (본문 크롤링 없이)
+     */
+    private List<TitleAndLink> extractTitleAndLinks(String keyword) throws IOException {
+        String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
+        String searchUrl = "https://search.naver.com/search.naver?where=news&query="
+                + encodedKeyword + "&sort=1";
+
+        String ua = USER_AGENTS[random.nextInt(USER_AGENTS.length)];
+
+        Document doc = Jsoup.connect(searchUrl)
+                .userAgent(ua)
+                .referrer("https://www.naver.com")
+                .header("Accept", "text/html,application/xhtml+xml")
+                .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
+                .timeout(15000)
+                .get();
+
+        List<TitleAndLink> titleAndLinks = new ArrayList<>();
+
+        Elements newsItems = doc.select(".news_tit");
+        if (!newsItems.isEmpty()) {
+            log.info("[네이버] keyword={}, legacy selector hit {}건", keyword, newsItems.size());
+            int limit = Math.min(newsItems.size(), MAX_ITEMS_PER_KEYWORD);
+            for (int i = 0; i < limit; i++) {
+                Element item = newsItems.get(i);
+                String title = item.text();
+                String link = item.attr("href");
+                addTitleAndLink(titleAndLinks, title, link);
+            }
+        } else {
+            int extracted = extractFromEmbeddedPayload(doc.html(), titleAndLinks);
+            log.info("[네이버] keyword={}, payload fallback hit {}건", keyword, extracted);
+        }
+
+        return titleAndLinks;
+    }
+
+    /**
+     * 기사 목록의 본문을 병렬로 크롤링합니다.
+     * 스레드풀(4개)로 동시 요청 수를 제한하고, 각 작업 간 stagger delay를 적용합니다.
+     */
+    private List<RawNewsItem> fetchContentsInParallel(List<TitleAndLink> items) {
+        List<CompletableFuture<RawNewsItem>> futures = new ArrayList<>();
+
+        for (int i = 0; i < items.size(); i++) {
+            TitleAndLink item = items.get(i);
+            int staggerDelay = i * STAGGER_DELAY_MS; // anti-bot: 요청 간격 분산
+
+            CompletableFuture<RawNewsItem> future = CompletableFuture.supplyAsync(() -> {
+                if (staggerDelay > 0) {
+                    sleep(staggerDelay);
+                }
+                String content = fetchArticleContent(item.link);
+                return new RawNewsItem(item.title, item.link, content);
+            }, contentFetchExecutor).exceptionally(ex -> {
+                log.warn("[네이버] 본문 병렬 크롤링 실패. url={}, error={}", item.link, ex.getMessage());
+                return new RawNewsItem(item.title, item.link, "");
+            });
+
+            futures.add(future);
+        }
+
+        // 전체 완료 대기 (타임아웃 적용)
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(CONTENT_FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("[네이버] 본문 병렬 크롤링 타임아웃 또는 오류. 완료된 결과만 사용합니다. error={}", e.getMessage());
+        }
+
+        return futures.stream()
+                .map(f -> {
+                    try {
+                        return f.isDone() ? f.get() : null;
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    // ==================== 1단계 헬퍼: 제목+링크 수집 ====================
+
+    /** 제목+링크 임시 홀더 */
+    private record TitleAndLink(String title, String link) {}
+
+    private void addTitleAndLink(List<TitleAndLink> list, String rawTitle, String rawLink) {
+        if (rawTitle == null || rawLink == null) return;
+
+        String title = Jsoup.parse(rawTitle).text().trim();
+        String link = rawLink.replace("\\/", "/").trim();
+
+        if (title.isBlank() || link.isBlank()) return;
+        list.add(new TitleAndLink(title, link));
+    }
+
+    private int extractFromEmbeddedPayload(String html, List<TitleAndLink> results) {
         int count = 0;
         Matcher matcher = SEARCH_BASIC_TITLE_PATTERN.matcher(html);
         while (matcher.find() && results.size() < MAX_ITEMS_PER_KEYWORD) {
@@ -90,26 +217,13 @@ public class NaverNewsCrawler implements NewsCrawler {
 
             if (!isLikelyArticleUrl(link)) continue;
 
-            if (addCrawledItem(results, title, link)) {
-                count++;
-            }
+            addTitleAndLink(results, title, link);
+            count++;
         }
         return count;
     }
 
-    private boolean addCrawledItem(List<RawNewsItem> results, String rawTitle, String rawLink) {
-        if (rawTitle == null || rawLink == null) return false;
-
-        String title = Jsoup.parse(rawTitle).text().trim();
-        String link = rawLink.replace("\\/", "/").trim();
-
-        if (title.isBlank() || link.isBlank()) return false;
-
-        String content = fetchArticleContent(link);
-        results.add(new RawNewsItem(title, link, content));
-        sleep(300 + random.nextInt(500)); // anti-bot
-        return true;
-    }
+    // ==================== 2단계 헬퍼: 본문 추출 ====================
 
     private String decodeEscapes(String value) {
         if (value == null || value.isBlank()) return "";

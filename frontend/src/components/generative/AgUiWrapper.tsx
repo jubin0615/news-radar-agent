@@ -1,7 +1,7 @@
 /**
  * AgUiWrapper — 커스텀 AI 채팅 인터페이스
  *
- * CopilotKit 내부 훅을 직접 사용해 완전 커스텀 UI 구현:
+ * CopilotKit 위에 직접 사용한 완전 커스텀 UI 구현:
  *   • useCopilotChatInternal — 메시지 송수신 / 스트리밍 제어
  *   • useCopilotAction       — search_news / collect_news / generate_report 도구
  *   • useCopilotReadable     — 시스템 상태를 LLM에 전달
@@ -47,9 +47,9 @@ import { cn } from "@/lib/cn";
 import NewsCarousel from "./NewsCarousel";
 import ReportViewer from "./ReportViewer";
 import RagAnswerCard, { type RagAnswerData } from "./RagAnswerCard";
-import type { NewsItem, AgentReport } from "@/types";
+import type { NewsItem, AgentReport, DailyReport, ReportNewsItem } from "@/types";
 
-/* ─────────────────────────── Types ─────────────────────────── */
+/* ═══════════════════════════ Types ═══════════════════════════ */
 
 interface CollectionStatus {
   totalNewsCount: number;
@@ -59,22 +59,64 @@ interface CollectionStatus {
   activeKeywords?: string[];
 }
 
-interface BackendReport {
-  stats?: {
-    keyword?: string;
-    date?: string;
-    totalCount?: number;
-    averageScore?: number;
-    gradeDistribution?: Record<string, number>;
+function normalizeCollectionStatus(value: unknown): CollectionStatus | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Record<string, unknown>;
+
+  const totalNewsCount = Number(data.totalNewsCount);
+  const todayNewsCount = Number(data.todayNewsCount);
+  const activeKeywordCount = Number(data.activeKeywordCount);
+  const collecting = data.collecting;
+
+  if (
+    !Number.isFinite(totalNewsCount) ||
+    !Number.isFinite(todayNewsCount) ||
+    !Number.isFinite(activeKeywordCount) ||
+    typeof collecting !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    totalNewsCount,
+    todayNewsCount,
+    activeKeywordCount,
+    collecting,
+    activeKeywords: Array.isArray(data.activeKeywords)
+      ? data.activeKeywords.filter((k): k is string => typeof k === "string")
+      : undefined,
   };
-  articles?: {
-    title?: string;
-    importanceScore?: number;
-    grade?: string;
-    category?: string;
-    summary?: string;
-    aiReason?: string;
-  }[];
+}
+
+interface BackendReportItem {
+  title?: string;
+  url?: string;
+  importanceScore?: number | null;
+  innovationScore?: number | null;
+  aiScore?: number | null;
+  category?: string | null;
+  summary?: string | null;
+  aiReason?: string | null;
+}
+
+interface BackendReportStats {
+  keyword?: string;
+  date?: string;
+  totalCount?: number;
+  averageScore?: number;
+  gradeDistribution?: Record<string, number>;
+}
+
+interface BackendReport {
+  // New shape (티어링·컷오프 적용)
+  totalNewsCount?: number;
+  displayedNewsCount?: number;
+  trendInsight?: string;
+  headlines?: BackendReportItem[];
+  radarBoard?: BackendReportItem[];
+  // Legacy shape (하위 호환)
+  stats?: BackendReportStats;
+  articles?: BackendReportItem[];
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -88,41 +130,54 @@ interface ChatMessage {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/* ─────────────────────────── System prompt ─────────────────────────── */
+/* ═══════════════════════════ System prompt ═══════════════════════════ */
 
 const SYSTEM_INSTRUCTIONS = `
 너는 "뉴스 레이더"라는 IT 기술 뉴스 분석 서비스의 AI 에이전트야.
 사용자와 자연스럽게 한국어로 대화하면서, 필요할 때 아래 도구를 사용해.
 
 ## 사용 가능한 도구
-- search_news: DB에서 뉴스를 키워드로 검색. keyword 없이 호출하면 중요도 순 전체 최신 뉴스를 반환
+- search_news: DB에서 뉴스를 키워드로 검색. keyword 없이 호출하면 전체 최신 뉴스 반환
 - collect_news: 인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집
 - generate_report: 수집된 뉴스로 일일 브리핑 리포트 생성
-- ask_about_news: 수집된 뉴스 내용을 기반으로 심층 질문에 RAG 방식으로 답변
+- ask_about_news: 수집된 뉴스 내용에 기반해 RAG 방식으로 심층 답변
 
 ## 도구 사용 기준
-- "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news (관련 keyword 파라미터 사용)
-- "핫뉴스", "TOP5", "인기", "트렌드", "최신 뉴스" → search_news를 keyword 없이 호출해 전체 뉴스를 받아 직접 선별
+- "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news
+- "핫뉴스", "TOP5", "인기", "트렌드", "최신 뉴스" → search_news(키워드 없이)
 - "수집", "크롤링", "새 뉴스 가져와" → collect_news
 - "리포트", "보고서", "브리핑", "요약 정리" → generate_report
-- "왜", "어떻게", "분석해줘", "설명해줘", "~에 대해 자세히", "~의 의미는", "~영향은", "~전망은" → ask_about_news
-- 일반 질문·잡담 → 도구 없이 자연스럽게 대화
+- "왜", "어떻게", "분석해줘", "설명해줘", "~에 대해 자세히" → ask_about_news
 
-## 주의사항 (반드시 준수)
-- **collect_news는 사용자가 명시적으로 "수집", "크롤링"을 요청할 때만 사용하라.** 시스템 상태에 totalNews > 0이면 이미 뉴스가 있으므로 자동으로 collect_news를 실행하지 마라.
-- ask_about_news가 "관련 기사를 찾지 못했습니다"를 반환해도 뉴스 DB가 비어있는 게 아니다. 해당 주제의 유사 기사가 부족한 것이다. 이 경우 collect_news를 자동으로 실행하지 말고, 사용자에게 더 구체적인 키워드로 다시 질문하거나 직접 수집을 요청하도록 안내하라.
-- search_news가 빈 결과를 반환해도 자동으로 collect_news를 실행하지 마라. 먼저 keyword 없이 search_news를 재시도하고, 그래도 없으면 사용자에게 수집을 제안하라.
-- 뉴스 내용에 대한 깊은 이해·분석이 필요한 질문은 ask_about_news를 사용해.
-- 대화 맥락을 항상 반영해서 일관성 있게 답변해.
+## 주의사항
+- collect_news는 사용자가 명시적으로 요청했을 때만 사용할 것
+- 검색 결과가 비어 있어도 자동으로 수집을 실행하지 말 것
+- 항상 대화 맥락을 반영해 일관되게 답변할 것
 `.trim();
 
-/* ─────────────────────────── Quick-action chips ─────────────────────────── */
+/* ═══════════════════════════ Quick-action chips ═══════════════════════════ */
 
 const QUICK_ACTIONS = [
-  { label: "최신 뉴스 검색", icon: Search, message: "최신 뉴스 알려줘" },
-  { label: "오늘의 AI 트렌드", icon: TrendingUp, message: "오늘의 AI 트렌드는?" },
-  { label: "핫 뉴스 TOP5", icon: Flame, message: "이번 주 핫 뉴스 TOP5 알려줘" },
-  { label: "리포트 생성", icon: FileBarChart, message: "뉴스 리포트 만들어줘" },
+  {
+    label: "최신 뉴스 검색",
+    icon: Search,
+    message: "최신 뉴스 알려줘",
+  },
+  {
+    label: "오늘의 AI 트렌드",
+    icon: TrendingUp,
+    message: "오늘의 AI 트렌드는?",
+  },
+  {
+    label: "핫 뉴스 TOP5",
+    icon: Flame,
+    message: "이번 주 핫 뉴스 TOP5 알려줘",
+  },
+  {
+    label: "리포트 생성",
+    icon: FileBarChart,
+    message: "뉴스 리포트 만들어줘",
+  },
 ];
 
 /* ═══════════════════════════ Component ═══════════════════════════ */
@@ -159,9 +214,13 @@ export default function AgUiWrapper({ className }: { className?: string }) {
   /* ── System status load ── */
   useEffect(() => {
     fetch("/api/news/collection-status")
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const json = (await r.json()) as unknown;
+        return normalizeCollectionStatus(json);
+      })
       .then(setSystemContext)
-      .catch(() => null);
+      .catch(() => setSystemContext(null));
   }, []);
 
   /* ── Set system instructions ── */
@@ -186,12 +245,14 @@ export default function AgUiWrapper({ className }: { className?: string }) {
   /* ── Tool: search_news ── */
   useCopilotAction({
     name: "search_news",
-    description: "DB에 수집된 뉴스를 키워드로 검색합니다. keyword 미입력 시 최신 뉴스를 반환합니다.",
+    description:
+      "DB에 수집된 뉴스를 키워드로 검색합니다. keyword 미입력 시 최신 전체 뉴스를 반환합니다.",
     parameters: [
       {
         name: "keyword",
         type: "string",
-        description: "검색할 키워드 (예: AI, 반도체). 생략 시 최신 전체 뉴스 반환.",
+        description:
+          "검색할 키워드 (예: AI, 반도체). 생략 시 최신 전체 뉴스 반환.",
         required: false,
       },
     ],
@@ -206,7 +267,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
         return (
           <div className="nrc-tool-loading">
             <span className="nrc-spinner" />
-            <span>뉴스를 검색하고 있습니다…</span>
+            <span>뉴스를 검색하고 있습니다...</span>
           </div>
         );
       }
@@ -219,14 +280,21 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           </div>
         );
       }
-      return <NewsCarousel items={items} title="검색 결과" onAskAboutNews={handleSend} />;
+      return (
+        <NewsCarousel
+          items={items}
+          title="검색 결과"
+          onAskAboutNews={handleSend}
+        />
+      );
     },
   });
 
   /* ── Tool: collect_news ── */
   useCopilotAction({
     name: "collect_news",
-    description: "인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집합니다.",
+    description:
+      "인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집합니다.",
     parameters: [],
     handler: async () => {
       const res = await fetch("/api/news/collect", { method: "POST" });
@@ -238,14 +306,14 @@ export default function AgUiWrapper({ className }: { className?: string }) {
         return (
           <div className="nrc-tool-loading">
             <span className="nrc-spinner" />
-            <span>뉴스를 수집하고 있습니다… (1~2분 소요)</span>
+            <span>뉴스를 수집하고 있습니다... (1~2분 소요)</span>
           </div>
         );
       }
       return (
         <div className="nrc-tool-success">
           <div className="nrc-tool-success-icon">✓</div>
-          뉴스 수집이 시작되었습니다. 잠시 후 검색해 보세요.
+          뉴스 수집이 시작되었습니다. 잠시 후 다시 확인해 주세요.
         </div>
       );
     },
@@ -261,7 +329,8 @@ export default function AgUiWrapper({ className }: { className?: string }) {
       {
         name: "question",
         type: "string",
-        description: "사용자의 자연어 질문 (예: 'AI 반도체 규제가 삼성에 미치는 영향은?')",
+        description:
+          "사용자의 자연어 질문 (예: 'AI 반도체 규제가 삼성에 미치는 영향은?')",
         required: true,
       },
     ],
@@ -279,7 +348,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
         return (
           <div className="nrc-tool-loading">
             <span className="nrc-spinner" />
-            <span>뉴스 기사를 분석하고 있습니다…</span>
+            <span>뉴스 기사를 분석하고 있습니다...</span>
           </div>
         );
       }
@@ -298,7 +367,8 @@ export default function AgUiWrapper({ className }: { className?: string }) {
   /* ── Tool: generate_report ── */
   useCopilotAction({
     name: "generate_report",
-    description: "수집·분석된 뉴스를 종합해 일일 브리핑 리포트를 생성합니다.",
+    description:
+      "수집·분석된 뉴스를 종합해 일일 브리핑 리포트를 생성합니다.",
     parameters: [],
     handler: async () => {
       const res = await fetch("/api/report", { method: "POST" });
@@ -310,7 +380,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
         return (
           <div className="nrc-tool-loading">
             <span className="nrc-spinner" />
-            <span>리포트를 생성하고 있습니다…</span>
+            <span>리포트를 생성하고 있습니다...</span>
           </div>
         );
       }
@@ -337,7 +407,9 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           <div className="nrc-report-card-body">
             <strong>{report.title}</strong>
             <span>
-              {report.newsCount != null ? `${report.newsCount}건 분석 완료` : "리포트 생성 완료"}{" "}
+              {report.reportData
+                ? `${report.reportData.totalNewsCount}건 검토 → ${report.reportData.displayedNewsCount}건 브리핑`
+                : "리포트 생성 완료"}{" "}
               — 클릭해서 열기
             </span>
           </div>
@@ -412,7 +484,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
               {isLoading ? (
                 <>
                   <span className="nrc-dot-pulse" />
-                  응답 생성 중…
+                  응답 생성 중...
                 </>
               ) : (
                 <>
@@ -601,7 +673,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           <textarea
             ref={inputRef}
             className="nrc-textarea"
-            placeholder="메시지를 입력하세요…"
+            placeholder="메시지를 입력하세요..."
             rows={1}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -641,53 +713,111 @@ export default function AgUiWrapper({ className }: { className?: string }) {
   );
 }
 
-/* ─────────────────────────── Helpers ─────────────────────────── */
+/* ═══════════════════════════ Helpers ═══════════════════════════ */
 
-function buildAgentReport(data: BackendReport): AgentReport {
+function buildAgentReportLegacy(data: BackendReport): AgentReport {
+  const toItem = (raw: BackendReportItem): ReportNewsItem => ({
+    title: raw.title ?? "제목 없음",
+    url: raw.url ?? "",
+    importanceScore: toNumberOrNull(raw.importanceScore),
+    innovationScore: toNumberOrNull(raw.innovationScore) ?? toNumberOrNull(raw.aiScore),
+    category: raw.category ?? null,
+    summary: raw.summary ?? null,
+    aiReason: raw.aiReason ?? null,
+  });
+
+  const reportData: DailyReport = {
+    totalNewsCount: toNumberOrNull(data.totalNewsCount) ?? 0,
+    displayedNewsCount:
+      toNumberOrNull(data.displayedNewsCount) ??
+      (data.headlines?.length ?? 0) + (data.radarBoard?.length ?? 0),
+    trendInsight: data.trendInsight ?? "",
+    headlines: (data.headlines ?? []).map(toItem),
+    radarBoard: (data.radarBoard ?? []).map(toItem),
+  };
+
   return {
     id: `rpt-${Date.now()}`,
-    title: `뉴스 데일리 리포트 — ${data.stats?.keyword ?? "전체"}`,
-    content: formatReportContent(data),
+    title: "뉴스 레이더 데일리 브리핑",
+    content: "",
     createdAt: new Date().toISOString(),
-    keyword: data.stats?.keyword,
-    newsCount: data.stats?.totalCount,
+    newsCount: reportData.displayedNewsCount,
+    reportData,
   };
 }
 
-function formatReportContent(report: BackendReport): string {
-  const s = report.stats;
-  const lines: string[] = ["# 뉴스 데일리 리포트", ""];
+function toNumberOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  if (s) {
-    lines.push("## 통계 요약", "", "| 항목 | 값 |", "|---|---|");
-    if (s.keyword) lines.push(`| 키워드 | ${s.keyword} |`);
-    if (s.date) lines.push(`| 날짜 | ${s.date} |`);
-    if (s.totalCount != null) lines.push(`| 총 기사 수 | ${s.totalCount}건 |`);
-    if (s.averageScore != null) lines.push(`| 평균 중요도 | ${s.averageScore.toFixed(1)}점 |`);
-    if (s.gradeDistribution) {
-      const grades = Object.entries(s.gradeDistribution)
-        .map(([g, c]) => `${g}: ${c}건`)
-        .join(", ");
-      lines.push(`| 등급 분포 | ${grades} |`);
-    }
-    lines.push("");
+function formatGradeDistribution(
+  gradeDistribution: BackendReportStats["gradeDistribution"],
+): string {
+  if (!gradeDistribution) return "";
+  return Object.entries(gradeDistribution)
+    .filter(([, count]) => Number.isFinite(Number(count)) && Number(count) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([grade, count]) => `${grade}:${count}`)
+    .join(", ");
+}
+
+function toReportNewsItem(raw: BackendReportItem): ReportNewsItem {
+  return {
+    title: raw.title ?? "제목 없음",
+    url: raw.url ?? "",
+    importanceScore: toNumberOrNull(raw.importanceScore),
+    innovationScore: toNumberOrNull(raw.innovationScore) ?? toNumberOrNull(raw.aiScore),
+    category: raw.category ?? null,
+    summary: raw.summary ?? null,
+    aiReason: raw.aiReason ?? null,
+  };
+}
+
+function buildAgentReport(data: BackendReport): AgentReport {
+  const hasNewPayload =
+    Array.isArray(data.headlines) ||
+    Array.isArray(data.radarBoard) ||
+    data.totalNewsCount != null ||
+    data.displayedNewsCount != null ||
+    typeof data.trendInsight === "string";
+
+  if (hasNewPayload) {
+    return buildAgentReportLegacy(data);
   }
 
-  const articles = report.articles;
-  if (articles && articles.length > 0) {
-    lines.push("## 주요 기사", "");
-    articles.forEach((a, i) => {
-      lines.push(`### ${i + 1}. ${a.title ?? "제목 없음"}`);
-      lines.push(
-        `- **중요도**: ${a.grade ?? "N/A"} (${a.importanceScore ?? "-"}점) / **카테고리**: ${a.category ?? "-"}`,
-      );
-      if (a.summary) lines.push(`- ${a.summary}`);
-      if (a.aiReason) lines.push(`> ${a.aiReason}`);
-      lines.push("");
-    });
-  } else {
-    lines.push("수집된 뉴스가 없습니다.");
-  }
+  const sortedArticles = (data.articles ?? [])
+    .map(toReportNewsItem)
+    .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0));
 
-  return lines.join("\n");
+  const headlines = sortedArticles.slice(0, 3);
+  const radarBoard = sortedArticles.slice(3, 9);
+
+  const totalNewsCount = toNumberOrNull(data.stats?.totalCount) ?? sortedArticles.length;
+  const averageScore = toNumberOrNull(data.stats?.averageScore);
+  const gradeText = formatGradeDistribution(data.stats?.gradeDistribution);
+
+  const trendParts = [
+    data.stats?.date ? `${data.stats.date} 기준` : "오늘 기준",
+    averageScore != null ? `평균 중요도 ${averageScore.toFixed(1)}점` : null,
+    gradeText ? `등급 분포 ${gradeText}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  const reportData: DailyReport = {
+    totalNewsCount,
+    displayedNewsCount: headlines.length + radarBoard.length,
+    trendInsight: trendParts.join(" | "),
+    headlines,
+    radarBoard,
+  };
+
+  return {
+    id: `rpt-${Date.now()}`,
+    title: "뉴스 레이더 데일리 브리핑",
+    content: "",
+    createdAt: new Date().toISOString(),
+    newsCount: reportData.displayedNewsCount,
+    reportData,
+  };
 }

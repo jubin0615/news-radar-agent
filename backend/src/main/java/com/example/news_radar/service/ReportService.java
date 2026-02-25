@@ -17,17 +17,22 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-// 뉴스 분석 리포트 생성 서비스 (JSON + 마크다운)
+// 뉴스 분석 리포트 생성 서비스 (티어링·컷오프·Connecting the Dots)
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReportService {
 
     private final NewsRepository newsRepository;
+    private final OpenAiService openAiService;
 
     // 리포트 저장 디렉토리
     private static final String REPORT_DIR = "reports";
+
+    // Radar Board 편입 기준: innovationScore가 이 값 이상이면 잠재 트렌드로 분류
+    private static final int RADAR_INNOVATION_THRESHOLD = 8;
 
     /**
      * 특정 키워드 + 날짜 기준 JSON 리포트 생성
@@ -37,8 +42,7 @@ public class ReportService {
         LocalDateTime end = date.atTime(LocalTime.MAX);
 
         List<News> newsList = newsRepository.findByKeywordAndPeriod(keyword, start, end);
-
-        return buildReportData(keyword, date, newsList);
+        return buildReportData(newsList);
     }
 
     /**
@@ -50,8 +54,7 @@ public class ReportService {
         LocalDateTime end = today.atTime(LocalTime.MAX);
 
         List<News> allToday = newsRepository.findByCollectedAtBetween(start, end);
-
-        return buildReportData("전체", today, allToday);
+        return buildReportData(allToday);
     }
 
     /**
@@ -59,7 +62,7 @@ public class ReportService {
      */
     public ReportResult generateAllNewsReport() {
         List<News> allNews = newsRepository.findAllByScore();
-        return buildReportData("전체", LocalDate.now(), allNews);
+        return buildReportData(allNews);
     }
 
     /**
@@ -82,98 +85,130 @@ public class ReportService {
         }
     }
 
-    // 리포트 데이터 구조 생성
-    private ReportResult buildReportData(String keyword, LocalDate date, List<News> newsList) {
-        double avgScore = newsList.stream()
+    // ==================== 핵심 티어링·컷오프 로직 ====================
+
+    /**
+     * 수집된 뉴스 목록을 티어링하여 ReportResult를 구성합니다.
+     *
+     * 알고리즘:
+     *   1. 전체 뉴스 개수를 totalNewsCount에 저장
+     *   2. importanceScore 내림차순 정렬 → 상위 3개를 headlines로 확정
+     *   3. 나머지 뉴스 중 innovationScore >= RADAR_INNOVATION_THRESHOLD인 것을 radarBoard로 편입
+     *   4. 두 그룹에 속하지 못한 뉴스는 과감히 Drop (통계 수치에만 반영)
+     *   5. headlines + radarBoard를 합산하여 trendInsight 생성 (Connecting the Dots)
+     */
+    private ReportResult buildReportData(List<News> newsList) {
+        int totalNewsCount = newsList.size();
+
+        // importanceScore 내림차순 정렬 (null은 0으로 처리)
+        List<News> sorted = newsList.stream()
                 .filter(n -> n.getImportanceScore() != null)
-                .mapToInt(News::getImportanceScore)
-                .average()
-                .orElse(0);
-
-        Map<String, Long> gradeDistribution = newsList.stream()
-                .filter(n -> n.getImportanceScore() != null)
-                .collect(Collectors.groupingBy(
-                        n -> ImportanceEvaluator.getGrade(n.getImportanceScore()),
-                        Collectors.counting()));
-
-        ReportResult.ReportStats stats = new ReportResult.ReportStats(
-                keyword,
-                date.toString(),
-                newsList.size(),
-                Math.round(avgScore * 10) / 10.0,
-                gradeDistribution
-        );
-
-        List<ReportResult.ArticleSummary> articles = newsList.stream()
-                .sorted(Comparator.comparingInt(n -> -(n.getImportanceScore() != null ? n.getImportanceScore() : 0)))
-                .map(this::newsToArticleSummary)
+                .sorted(Comparator.comparingInt(News::getImportanceScore).reversed())
                 .collect(Collectors.toList());
 
-        return new ReportResult(stats, articles);
+        // Headlines: 상위 3개
+        List<News> headlineNews = sorted.stream().limit(3).collect(Collectors.toList());
+
+        // Radar Board: Top 3 이후 후보 중 innovationScore >= RADAR_INNOVATION_THRESHOLD
+        Set<Long> headlineIds = headlineNews.stream()
+                .map(News::getId)
+                .collect(Collectors.toSet());
+
+        List<News> radarNews = sorted.stream()
+                .filter(n -> !headlineIds.contains(n.getId()))
+                .filter(n -> n.getInnovationScore() != null
+                        && n.getInnovationScore() >= RADAR_INNOVATION_THRESHOLD)
+                .collect(Collectors.toList());
+
+        int displayedNewsCount = headlineNews.size() + radarNews.size();
+
+        log.info("[리포트] 전체={}건 | headlines={}건 | radarBoard={}건 | Drop={}건",
+                totalNewsCount, headlineNews.size(), radarNews.size(),
+                totalNewsCount - displayedNewsCount);
+
+        // Connecting the Dots: 살아남은 뉴스들로만 트렌드 인사이트 생성
+        List<News> topNews = Stream.concat(headlineNews.stream(), radarNews.stream())
+                .collect(Collectors.toList());
+        String trendInsight = openAiService.generateTrendInsight(topNews);
+
+        // News → NewsItem DTO 변환
+        List<ReportResult.NewsItem> headlines = headlineNews.stream()
+                .map(this::toNewsItem)
+                .collect(Collectors.toList());
+
+        List<ReportResult.NewsItem> radarBoard = radarNews.stream()
+                .map(this::toNewsItem)
+                .collect(Collectors.toList());
+
+        return new ReportResult(totalNewsCount, displayedNewsCount, trendInsight, headlines, radarBoard);
     }
 
-    // News → ArticleSummary 변환
-    private ReportResult.ArticleSummary newsToArticleSummary(News news) {
-        return new ReportResult.ArticleSummary(
+    // News → NewsItem 변환
+    private ReportResult.NewsItem toNewsItem(News news) {
+        return new ReportResult.NewsItem(
                 news.getTitle(),
                 news.getUrl(),
                 news.getImportanceScore(),
-                news.getImportanceScore() != null ? ImportanceEvaluator.getGrade(news.getImportanceScore()) : "N/A",
-                news.getKeywordMatchScore(),
-                news.getAiScore(),
+                news.getInnovationScore(),
                 news.getCategory(),
                 news.getSummary(),
                 news.getAiReason()
         );
     }
 
-    // 마크다운 리포트 문자열 생성
+    // ==================== 마크다운 생성 ====================
+
     private String buildMarkdown(ReportResult report) {
         StringBuilder md = new StringBuilder();
-        ReportResult.ReportStats stats = report.getStats();
-        List<ReportResult.ArticleSummary> articles = report.getArticles();
 
-        md.append("# 뉴스 분석 리포트\n\n");
-        md.append("- **키워드**: ").append(stats.getKeyword()).append("\n");
-        md.append("- **날짜**: ").append(stats.getDate()).append("\n");
-        md.append("- **총 수집 건수**: ").append(stats.getTotalCount()).append("건\n");
-        md.append("- **평균 중요도**: ").append(stats.getAverageScore()).append("점\n");
-
-        Map<String, Long> grades = stats.getGradeDistribution();
-        if (grades != null && !grades.isEmpty()) {
-            md.append("- **등급 분포**: ");
-            grades.forEach((grade, count) -> md.append(grade).append("(").append(count).append(") "));
-            md.append("\n");
-        }
+        md.append("# 뉴스 레이더 데일리 리포트\n\n");
+        md.append("- **전체 검토 뉴스**: ").append(report.getTotalNewsCount()).append("건\n");
+        md.append("- **리포트 수록 뉴스**: ").append(report.getDisplayedNewsCount()).append("건\n");
+        md.append("- **Drop (컷오프)**: ")
+                .append(report.getTotalNewsCount() - report.getDisplayedNewsCount()).append("건\n");
 
         md.append("\n---\n\n");
 
-        md.append("## 주요 기사 (HIGH 이상)\n\n");
-        boolean hasImportant = false;
-        for (ReportResult.ArticleSummary article : articles) {
-            if (article.getImportanceScore() != null && article.getImportanceScore() >= 60) {
-                hasImportant = true;
-                md.append("### ").append(article.getTitle()).append("\n");
-                md.append("- **점수**: ").append(article.getImportanceScore())
-                        .append(" (").append(article.getGrade()).append(")\n");
-                md.append("- **카테고리**: ").append(article.getCategory()).append("\n");
-                md.append("- **AI 분석**: ").append(article.getAiReason()).append("\n");
-                md.append("- **요약**: ").append(article.getSummary()).append("\n");
-                md.append("- **링크**: ").append(article.getUrl()).append("\n\n");
+        // Trend Insight
+        md.append("## Connecting the Dots — 트렌드 인사이트\n\n");
+        md.append(report.getTrendInsight()).append("\n\n");
+
+        md.append("---\n\n");
+
+        // Headlines
+        md.append("## 헤드라인 (Top 3)\n\n");
+        if (report.getHeadlines().isEmpty()) {
+            md.append("주요 뉴스가 없습니다.\n\n");
+        } else {
+            for (int i = 0; i < report.getHeadlines().size(); i++) {
+                ReportResult.NewsItem item = report.getHeadlines().get(i);
+                md.append("### ").append(i + 1).append(". ").append(item.getTitle()).append("\n");
+                md.append("- **중요도**: ").append(item.getImportanceScore())
+                        .append(" | **혁신성**: ").append(item.getInnovationScore()).append("/15\n");
+                md.append("- **카테고리**: ").append(item.getCategory()).append("\n");
+                md.append("- **AI 분석**: ").append(item.getAiReason()).append("\n");
+                md.append("- **요약**: ").append(item.getSummary()).append("\n");
+                md.append("- **링크**: ").append(item.getUrl()).append("\n\n");
             }
         }
-        if (!hasImportant) md.append("해당 등급의 기사가 없습니다.\n\n");
 
-        md.append("---\n\n## 전체 기사 목록\n\n");
-        md.append("| 순위 | 점수 | 등급 | 카테고리 | 제목 |\n");
-        md.append("|------|------|------|----------|------|\n");
-        int rank = 1;
-        for (ReportResult.ArticleSummary article : articles) {
-            md.append("| ").append(rank++).append(" | ")
-              .append(article.getImportanceScore()).append(" | ")
-              .append(article.getGrade()).append(" | ")
-              .append(article.getCategory()).append(" | ")
-              .append(article.getTitle()).append(" |\n");
+        md.append("---\n\n");
+
+        // Radar Board
+        md.append("## 레이더 보드 (잠재 트렌드)\n\n");
+        if (report.getRadarBoard().isEmpty()) {
+            md.append("혁신성 기준(").append(RADAR_INNOVATION_THRESHOLD)
+                    .append("/15)을 통과한 뉴스가 없습니다.\n\n");
+        } else {
+            for (ReportResult.NewsItem item : report.getRadarBoard()) {
+                md.append("### ").append(item.getTitle()).append("\n");
+                md.append("- **중요도**: ").append(item.getImportanceScore())
+                        .append(" | **혁신성**: ").append(item.getInnovationScore()).append("/15\n");
+                md.append("- **카테고리**: ").append(item.getCategory()).append("\n");
+                md.append("- **AI 분석**: ").append(item.getAiReason()).append("\n");
+                md.append("- **요약**: ").append(item.getSummary()).append("\n");
+                md.append("- **링크**: ").append(item.getUrl()).append("\n\n");
+            }
         }
 
         return md.toString();
