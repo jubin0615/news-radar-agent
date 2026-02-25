@@ -10,20 +10,20 @@ export default function FloatingGuide() {
   return (
     <>
       {/* Floating Button & Speech Bubble */}
-      <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-2">
+      <div className="fixed bottom-8 right-8 z-50 flex flex-row items-center gap-3">
         <AnimatePresence>
           {!isOpen && (
             <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
+              initial={{ opacity: 0, x: 10, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative mr-2 rounded-xl border border-[var(--glass-border)] bg-[rgba(255,255,255,0.08)] px-6 py-3 shadow-lg backdrop-blur-md"
+              className="relative rounded-xl border border-[var(--glass-border)] bg-[rgba(255,255,255,0.08)] px-4 py-2.5 shadow-lg backdrop-blur-md"
             >
-              <span className="text-base font-medium text-[var(--text-primary)]">
+              <span className="text-sm font-medium text-[var(--text-primary)]">
                 에이전트 이용 가이드
               </span>
-              {/* Triangle pointer */}
-              <div className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 border-b border-r border-[var(--glass-border)] bg-[rgba(255,255,255,0.08)]"></div>
+              {/* Triangle pointer (right side, pointing toward button) */}
+              <div className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 border-r border-t border-[var(--glass-border)] bg-[rgba(255,255,255,0.08)]"></div>
             </motion.div>
           )}
         </AnimatePresence>

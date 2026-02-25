@@ -141,10 +141,12 @@ const SYSTEM_INSTRUCTIONS = `
 - collect_news: 인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집
 - generate_report: 수집된 뉴스로 일일 브리핑 리포트 생성
 - ask_about_news: 수집된 뉴스 내용에 기반해 RAG 방식으로 심층 답변
+- trend_briefing: 오늘의 AI 트렌드 브리핑 생성 (중요도 HIGH 이상 + 시의성 최고 뉴스 기반)
 
 ## 도구 사용 기준
 - "뉴스 알려줘", "~뉴스", "~소식", "~동향" → search_news
-- "핫뉴스", "TOP5", "인기", "트렌드", "최신 뉴스" → search_news(키워드 없이)
+- "핫뉴스", "TOP5", "인기", "최신 뉴스" → search_news(키워드 없이)
+- "트렌드", "AI 트렌드", "오늘의 트렌드" → trend_briefing
 - "수집", "크롤링", "새 뉴스 가져와" → collect_news
 - "리포트", "보고서", "브리핑", "요약 정리" → generate_report
 - "왜", "어떻게", "분석해줘", "설명해줘", "~에 대해 자세히" → ask_about_news
@@ -352,6 +354,43 @@ export default function AgUiWrapper({ className }: { className?: string }) {
           <div className="nrc-tool-empty">
             <Brain size={14} style={{ opacity: 0.5 }} />
             분석 결과를 불러오지 못했습니다.
+          </div>
+        );
+      }
+      return <RagAnswerCard data={result as RagAnswerData} />;
+    },
+  });
+
+  /* ── Tool: trend_briefing (오늘의 AI 트렌드) ── */
+  useCopilotAction({
+    name: "trend_briefing",
+    description:
+      "오늘의 AI 트렌드 브리핑을 생성합니다. " +
+      "중요도 HIGH 이상이면서 시의성(Timeliness)이 가장 높은 뉴스를 선별해 트렌드 리포트를 작성합니다. " +
+      "'트렌드', 'AI 트렌드', '오늘의 트렌드' 등의 요청에 사용하세요.",
+    parameters: [],
+    handler: async () => {
+      const res = await fetch("/api/chat/trend-briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error(`트렌드 브리핑 요청 실패 (${res.status})`);
+      return (await res.json()) as RagAnswerData;
+    },
+    render: ({ status, result }) => {
+      if (status !== "complete") {
+        return (
+          <div className="nrc-tool-loading">
+            <span className="nrc-spinner" />
+            <span>AI 트렌드를 분석하고 있습니다...</span>
+          </div>
+        );
+      }
+      if (!result) {
+        return (
+          <div className="nrc-tool-empty">
+            <Brain size={14} style={{ opacity: 0.5 }} />
+            트렌드 분석 결과를 불러오지 못했습니다.
           </div>
         );
       }

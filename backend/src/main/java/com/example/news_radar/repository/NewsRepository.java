@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Pageable;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -72,6 +74,12 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "AND n.importanceScore > :minScore " +
            "AND n.collectedAt >= :since")
     List<News> findForVectorStore(List<String> keywords, int minScore, LocalDateTime since);
+
+    // 트렌드 브리핑 전용: 중요도 HIGH 이상 + 시의성(timelinessScore) 내림차순 정렬
+    @Query("SELECT n FROM News n WHERE n.isActive = true " +
+           "AND n.importanceScore >= :minImportanceScore " +
+           "ORDER BY n.timelinessScore DESC NULLS LAST, n.importanceScore DESC")
+    List<News> findTrendNews(int minImportanceScore, Pageable pageable);
 
     // 오래된 뉴스 하드 삭제 — 스케줄러에서 DB 정리용
     @Modifying

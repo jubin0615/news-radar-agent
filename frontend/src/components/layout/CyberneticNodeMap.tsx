@@ -134,9 +134,9 @@ function SatelliteNode({
         y1={cy}
         x2={x}
         y2={y}
-        stroke={`rgba(${nodeColor},${hovered ? 0.5 : 0.12})`}
-        strokeWidth={hovered ? 1.5 : 0.8}
-        strokeDasharray={hovered ? "none" : "3 4"}
+        stroke={`rgba(${nodeColor},${hovered ? 0.85 : 0.45})`}
+        strokeWidth={hovered ? 2 : 1.2}
+        strokeDasharray={hovered ? "none" : "5 5"}
         transition={{ duration: 0.25 }}
       />
 

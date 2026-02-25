@@ -32,4 +32,10 @@ public class ChatController {
         }
         return ResponseEntity.ok(ragService.ask(question));
     }
+
+    /** 오늘의 AI 트렌드 브리핑 — HIGH 이상 + 시의성 최고 순 뉴스로 리포트 생성 */
+    @PostMapping("/trend-briefing")
+    public ResponseEntity<RagResponse> trendBriefing() {
+        return ResponseEntity.ok(ragService.trendBriefing());
+    }
 }

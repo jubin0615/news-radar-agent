@@ -278,26 +278,54 @@ export default function AiBriefingSwipeCards({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/news");
-        if (res.ok) {
-          const data: NewsItem[] = await res.json();
-          // Top 5 by importance score
-          const top5 = data
-            .filter((n) => n.importanceScore != null)
-            .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
-            .slice(0, 5);
-          setCards(top5);
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const fetchCards = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const res = await fetch("/api/news", { cache: "no-store" });
+      if (!res.ok) return;
+
+      const data: NewsItem[] = await res.json();
+      // Top 5 by importance score
+      const top5 = data
+        .filter((n) => n.importanceScore != null)
+        .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
+        .slice(0, 5);
+
+      setCards(top5);
+      setCurrentIndex((prev) => Math.max(0, Math.min(prev, top5.length)));
+    } catch {
+      /* ignore */
+    } finally {
+      if (showLoader) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchCards(true);
+
+    const intervalId = window.setInterval(() => {
+      void fetchCards(false);
+    }, 10_000);
+
+    const handleWindowFocus = () => {
+      void fetchCards(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchCards(false);
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchCards]);
 
   const handleSwipe = useCallback(() => {
     setCurrentIndex((prev) => prev + 1);

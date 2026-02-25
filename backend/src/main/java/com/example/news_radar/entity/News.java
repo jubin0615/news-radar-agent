@@ -44,6 +44,9 @@ public class News {
     // 혁신성 세부 점수 (0~15): radarBoard 필터링 기준으로 활용
     private Integer innovationScore;
 
+    // 시의성 세부 점수 (0~15): 트렌드 브리핑 정렬 기준으로 활용
+    private Integer timelinessScore;
+
     // 메타데이터 신뢰도 점수 (0~20): 출처 도메인 Tier별 차등 부여
     private Integer metadataScore;
 

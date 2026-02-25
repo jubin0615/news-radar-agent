@@ -311,6 +311,7 @@ public class NewsService {
             news.setContent(item.getContent());
             news.setAiScore(llmScore);
             news.setInnovationScore(aiEval.innovation());
+            news.setTimelinessScore(aiEval.timeliness());
             news.setKeywordMatchScore(structuralScore);
             news.setMetadataScore(metadataScore);
             news.setAiReason(aiEval.reason());

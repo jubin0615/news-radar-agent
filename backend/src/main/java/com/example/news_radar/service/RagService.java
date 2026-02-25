@@ -1,11 +1,14 @@
 package com.example.news_radar.service;
 
 import com.example.news_radar.dto.RagResponse;
+import com.example.news_radar.entity.News;
+import com.example.news_radar.repository.NewsRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,14 +27,21 @@ public class RagService {
     private static final double THRESHOLD                = 0.30;
     private static final int    MIN_IMPORTANCE_SCORE     = 60;
 
+    /** 트렌드 브리핑: HIGH 등급 이상 (importanceScore >= 70) */
+    private static final int    TREND_MIN_IMPORTANCE     = 70;
+    private static final int    TREND_TOP_N              = 5;
+
     private final NewsVectorStoreService vectorStoreService;
+    private final NewsRepository         newsRepository;
     private final ChatClient             chatClient;
 
     public RagService(
             NewsVectorStoreService vectorStoreService,
+            NewsRepository newsRepository,
             ChatClient.Builder chatClientBuilder
     ) {
         this.vectorStoreService = vectorStoreService;
+        this.newsRepository     = newsRepository;
         this.chatClient         = chatClientBuilder.build();
     }
 
@@ -105,6 +115,68 @@ public class RagService {
         return new RagResponse(answer, sources);
     }
 
+    /**
+     * "오늘의 AI 트렌드" 브리핑을 생성합니다.
+     * DB에서 importanceScore >= 70(HIGH 이상) + timelinessScore 내림차순으로
+     * 상위 5건을 가져와 AI가 트렌드 브리핑 리포트를 작성합니다.
+     */
+    public RagResponse trendBriefing() {
+        List<News> trendNews = newsRepository.findTrendNews(
+                TREND_MIN_IMPORTANCE, PageRequest.of(0, TREND_TOP_N));
+
+        log.info("[트렌드 브리핑] HIGH 이상 뉴스 {}건 조회", trendNews.size());
+
+        if (trendNews.isEmpty()) {
+            return new RagResponse(
+                "현재 중요도 HIGH 이상의 트렌드 뉴스가 없습니다.\n" +
+                "뉴스를 먼저 수집해 주세요.",
+                List.of()
+            );
+        }
+
+        // 뉴스를 번호 붙인 컨텍스트 블록으로 변환
+        String context = buildTrendContext(trendNews);
+
+        String prompt = """
+                너는 IT 기술 뉴스 트렌드 분석 전문가야.
+                아래 [오늘의 트렌드 뉴스]는 전체 중요도가 HIGH 등급 이상이면서,
+                시의성(Timeliness) 점수가 가장 높은 순서로 엄선된 뉴스야.
+
+                반드시 아래 규칙을 지켜서 한국어로 **트렌드 브리핑 리포트**를 작성해.
+
+                [필수 규칙]
+                1. 각 뉴스가 **왜 오늘 가장 시의성 있고 중요한 트렌드인지**를 강조하며 분석해.
+                2. 단순 나열이 아니라, 뉴스들 사이의 공통 흐름이나 연결 고리가 있다면 함께 엮어서 설명해.
+                3. 각 뉴스 항목에 해당하는 기사 번호를 [1], [2] 형식으로 인용해.
+                4. 답변 마지막에 '---' 구분선 아래에 참고한 기사 번호와 제목을 목록으로 정리해.
+                5. [오늘의 트렌드 뉴스]에 없는 내용은 절대 지어내지 마.
+                6. 브리핑 서두에 "오늘의 AI 트렌드 브리핑"이라는 제목을 넣어줘.
+
+                [오늘의 트렌드 뉴스]
+                %s
+                """.formatted(context);
+
+        String answer;
+        try {
+            answer = chatClient.prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            if (answer == null || answer.isBlank()) {
+                answer = "트렌드 브리핑 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+            }
+        } catch (Exception e) {
+            log.error("[트렌드 브리핑] 답변 생성 실패: {}", e.getMessage(), e);
+            answer = "AI 트렌드 브리핑 생성 중 오류가 발생했습니다: " + e.getMessage();
+        }
+
+        List<RagResponse.RagSourceItem> sources = trendNews.stream()
+                .map(this::newsToSourceItem)
+                .collect(Collectors.toList());
+
+        return new RagResponse(answer, sources);
+    }
+
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     /** 기사 목록을 번호 붙인 텍스트 블록으로 변환 (GPT가 번호로 인용 가능) */
@@ -138,6 +210,41 @@ public class RagService {
                 grade,
                 meta(doc, "category"),
                 doc.getScore()
+        );
+    }
+
+    /** News 엔티티 목록을 번호 붙인 트렌드 컨텍스트 블록으로 변환 */
+    private String buildTrendContext(List<News> newsList) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < newsList.size(); i++) {
+            News news = newsList.get(i);
+            sb.append("[").append(i + 1).append("] ");
+            sb.append("제목: ").append(news.getTitle()).append("\n");
+            sb.append("키워드: ").append(news.getKeyword()).append("\n");
+            sb.append("카테고리: ").append(news.getCategory()).append("\n");
+            sb.append("요약: ").append(news.getSummary()).append("\n");
+            sb.append("AI 분석: ").append(news.getAiReason()).append("\n");
+            sb.append("중요도: ").append(news.getImportanceScore()).append("점 (")
+              .append(ImportanceEvaluator.getGrade(news.getImportanceScore())).append(")\n");
+            sb.append("시의성 점수: ").append(news.getTimelinessScore()).append("/15\n\n");
+        }
+        return sb.toString().trim();
+    }
+
+    /** News 엔티티에서 RagSourceItem 생성 */
+    private RagResponse.RagSourceItem newsToSourceItem(News news) {
+        int score = news.getImportanceScore() != null ? news.getImportanceScore() : 0;
+        String grade = score > 0 ? ImportanceEvaluator.getGrade(score) : "N/A";
+        return new RagResponse.RagSourceItem(
+                news.getId(),
+                news.getTitle(),
+                news.getUrl(),
+                news.getKeyword(),
+                news.getSummary(),
+                score,
+                grade,
+                news.getCategory(),
+                null
         );
     }
 
