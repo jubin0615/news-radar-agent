@@ -93,6 +93,15 @@ public class KeywordService {
                 log.info("키워드 아카이브: id={}, name={}, deactivatedNews={}", id, saved.getName(), deactivated);
             }
 
+            // ACTIVE로 복귀 시: 소프트 삭제된 뉴스가 있으면 다시 활성화
+            // (ARCHIVED → ACTIVE는 물론, PAUSED → ACTIVE에서도 안전하게 처리)
+            if (newStatus == KeywordStatus.ACTIVE && oldStatus != KeywordStatus.ACTIVE) {
+                int reactivated = newsRepository.reactivateByKeyword(saved.getName());
+                if (reactivated > 0) {
+                    log.info("키워드 재활성화: id={}, name={}, reactivatedNews={}", id, saved.getName(), reactivated);
+                }
+            }
+
             log.info("키워드 상태 변경: id={}, name={}, {} → {}", id, saved.getName(), oldStatus, newStatus);
             
             // ACTIVE 상태가 변경되었을 때 (ACTIVE로 오거나, ACTIVE에서 벗어날 때 둘 다) 재빌드 트리거

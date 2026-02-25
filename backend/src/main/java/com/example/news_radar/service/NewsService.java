@@ -8,6 +8,8 @@ import com.example.news_radar.dto.RawNewsItem;
 import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.entity.KeywordStatus;
 import com.example.news_radar.entity.News;
+import com.example.news_radar.entity.CrawledUrl;
+import com.example.news_radar.repository.CrawledUrlRepository;
 import com.example.news_radar.repository.KeywordRepository;
 import com.example.news_radar.repository.NewsRepository;
 
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class NewsService {
 
     private final NewsRepository newsRepository;
+    private final CrawledUrlRepository crawledUrlRepository;
     private final KeywordRepository keywordRepository;
     private final OpenAiService openAiService;
     private final CrawlerManager crawlerManager;
@@ -257,8 +260,8 @@ public class NewsService {
         int sliceEnd = ((keywordIndex + 1) * 100) / totalKeywords;
         int sliceRange = sliceEnd - sliceStart;
 
-        // Early Exit: DB URL을 사전 로드하여 크롤러에 전달 (본문 크롤링 전 중복 필터)
-        Set<String> knownUrls = new HashSet<>(newsRepository.findAllUrls());
+        // Early Exit: CrawledUrl 테이블에서 URL을 사전 로드하여 크롤러에 전달 (본문 크롤링 전 중복 필터)
+        Set<String> knownUrls = new HashSet<>(crawledUrlRepository.findAllUrls());
         List<RawNewsItem> items = crawlerManager.crawlAll(keyword, knownUrls);
 
         notifyProgress(new CollectionProgressEvent(
@@ -266,9 +269,9 @@ public class NewsService {
                 String.format("크롤링 목록 수집 완료. %d건 발견", items.size()),
                 keywordIndex, totalKeywords, sliceStart + sliceRange / 4, items.size()));
 
-        // 1. URL 중복 필터링 (비활성 이력 포함, 재수집 중복 방지 — 레이스 컨디션 안전장치)
+        // 1. URL 중복 필터링 (CrawledUrl 기준 — 레이스 컨디션 안전장치)
         List<RawNewsItem> newItems = items.stream()
-                .filter(item -> !newsRepository.existsByUrl(item.getUrl()))
+                .filter(item -> !crawledUrlRepository.existsByUrl(item.getUrl()))
                 .collect(Collectors.toList());
 
         notifyProgress(new CollectionProgressEvent(
@@ -321,7 +324,17 @@ public class NewsService {
         // 4. 일괄 저장 (Batch Insert)
         List<News> savedNewsList = newsRepository.saveAll(newsToSave);
 
-        // 5. 벡터 인덱싱
+        // 5. CrawledUrl 테이블에 URL 히스토리 저장 (중복 수집 영구 방지)
+        List<CrawledUrl> crawledUrlsToSave = savedNewsList.stream()
+                .map(News::getUrl)
+                .filter(url -> !crawledUrlRepository.existsByUrl(url))
+                .map(CrawledUrl::new)
+                .collect(Collectors.toList());
+        if (!crawledUrlsToSave.isEmpty()) {
+            crawledUrlRepository.saveAll(crawledUrlsToSave);
+        }
+
+        // 6. 벡터 인덱싱
         for (News savedNews : savedNewsList) {
             newsVectorStoreService.addOrUpdate(savedNews);
         }

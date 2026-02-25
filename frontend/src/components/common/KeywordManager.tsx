@@ -70,15 +70,44 @@ export default function KeywordManager({
   const inputRef = useRef<HTMLInputElement>(null);
   const { navigateToNewsWithKeyword } = useNavigation();
 
-  useEffect(() => { fetchKeywords(); }, []);
-
-  const fetchKeywords = async () => {
+  const fetchKeywords = useCallback(async (showLoader = false) => {
+    if (showLoader) setIsLoading(true);
     try {
       const res = await fetch("/api/keywords");
       if (res.ok) setKeywords(await res.json());
-    } catch { /* ignore */ }
-    finally { setIsLoading(false); }
-  };
+    } catch {
+      /* ignore */
+    } finally {
+      if (showLoader) setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchKeywords(true);
+
+    const intervalId = window.setInterval(() => {
+      void fetchKeywords(false);
+    }, 10_000);
+
+    const handleWindowFocus = () => {
+      void fetchKeywords(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchKeywords(false);
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchKeywords]);
 
   const showToast = useCallback((message: string) => {
     const id = Date.now();
@@ -106,8 +135,10 @@ export default function KeywordManager({
     setKeywords((prev) => prev.filter((k) => k.id !== id));
     try {
       await fetch(`/api/keywords/${id}`, { method: "DELETE" });
-    } catch { fetchKeywords(); }
-  }, []);
+    } catch {
+      void fetchKeywords(false);
+    }
+  }, [fetchKeywords]);
 
   /** 상태 변경 요청 (ACTIVE | PAUSED | ARCHIVED) */
   const setStatus = useCallback(async (id: number, newStatus: KeywordStatus) => {
@@ -124,10 +155,12 @@ export default function KeywordManager({
         const updated: Keyword = await res.json();
         setKeywords((prev) => prev.map((k) => (k.id === updated.id ? updated : k)));
       } else {
-        fetchKeywords(); // 실패 시 서버 상태로 복구
+        void fetchKeywords(false); // 실패 시 서버 상태로 복구
       }
-    } catch { fetchKeywords(); }
-  }, []);
+    } catch {
+      void fetchKeywords(false);
+    }
+  }, [fetchKeywords]);
 
   /** ACTIVE ↔ PAUSED 토글 */
   const toggleActiveOrPaused = useCallback(

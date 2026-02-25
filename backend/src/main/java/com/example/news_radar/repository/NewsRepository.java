@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * 뉴스 전용 리포지토리 - 필터링·정렬 쿼리 메서드 모음
@@ -17,18 +16,17 @@ import java.util.Set;
  */
 public interface NewsRepository extends JpaRepository<News, Long> {
 
-    // URL 중복 체크 — 전체 뉴스 기준 (비활성 이력 포함, 중복 수집 방지)
-    boolean existsByUrl(String url);
-
-    // 전체 URL 목록 조회 — Early Exit용 (크롤링 전 DB 중복 필터링)
-    @Query("SELECT n.url FROM News n")
-    Set<String> findAllUrls();
-
-    // 키워드의 기존 뉴스를 비활성화 (소프트 삭제) — 재수집 시 호출
+    // 키워드의 기존 뉴스를 비활성화 (소프트 삭제) — 재수집/아카이브 시 호출
     @Modifying
     @Transactional
     @Query("UPDATE News n SET n.isActive = false WHERE n.keyword = :keyword AND n.isActive = true")
     int deactivateByKeyword(String keyword);
+
+    // 키워드의 비활성 뉴스를 다시 활성화 — 아카이브 → ACTIVE 복귀 시 호출
+    @Modifying
+    @Transactional
+    @Query("UPDATE News n SET n.isActive = true WHERE n.keyword = :keyword AND n.isActive = false")
+    int reactivateByKeyword(String keyword);
 
     // 키워드 + 기간 조회 (활성만)
     @Query("SELECT n FROM News n WHERE n.keyword = :keyword AND n.isActive = true AND n.collectedAt BETWEEN :start AND :end")
@@ -74,4 +72,10 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "AND n.importanceScore > :minScore " +
            "AND n.collectedAt >= :since")
     List<News> findForVectorStore(List<String> keywords, int minScore, LocalDateTime since);
+
+    // 오래된 뉴스 하드 삭제 — 스케줄러에서 DB 정리용
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM News n WHERE n.collectedAt < :threshold")
+    int deleteByCollectedAtBefore(LocalDateTime threshold);
 }

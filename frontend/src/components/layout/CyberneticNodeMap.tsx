@@ -11,6 +11,11 @@ interface Keyword {
   createdAt: string | null;
 }
 
+// ── Font helpers ─────────────────────────────────────────────── //
+const isKorean = (text: string) => /[가-힣]/.test(text);
+const FONT_MONO = "var(--font-geist-mono), monospace";
+const FONT_SANS = "var(--font-geist-sans), 'Pretendard Variable', -apple-system, system-ui, sans-serif";
+
 // ── Geometry helpers ─────────────────────────────────────────── //
 function computeOrbitPositions(
   count: number,
@@ -166,13 +171,13 @@ function SatelliteNode({
         y={y - 16}
         textAnchor="middle"
         fill={`rgba(${nodeColor},${hovered ? 1 : 0.65})`}
-        fontSize={hovered ? 14 : 13}
-        fontFamily="var(--font-geist-mono), monospace"
+        fontSize={isKorean(keyword.name) ? (hovered ? 15 : 14) : (hovered ? 14 : 13)}
+        fontFamily={isKorean(keyword.name) ? FONT_SANS : FONT_MONO}
         fontWeight={hovered ? 700 : 600}
-        letterSpacing="0.06em"
+        letterSpacing={isKorean(keyword.name) ? "0.02em" : "0.06em"}
         transition={{ duration: 0.2 }}
         style={{
-          textTransform: /^[a-zA-Z0-9\s\-_.,!?@#$%^&*()]+$/.test(keyword.name) ? "uppercase" as const : "none" as const,
+          textTransform: isKorean(keyword.name) ? "none" as const : "uppercase" as const,
           textShadow: hovered
             ? `0 0 8px rgba(${nodeColor},0.6), 0 0 20px rgba(${nodeColor},0.3)`
             : "none",
@@ -306,7 +311,7 @@ export default function CyberneticNodeMap({
             textAnchor="middle"
             fill="rgba(255,255,255,0.25)"
             fontSize={13}
-            fontFamily="var(--font-geist-mono), monospace"
+            fontFamily={FONT_MONO}
             fontWeight={600}
           >
             NO ACTIVE KEYWORDS

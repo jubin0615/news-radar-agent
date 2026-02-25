@@ -159,11 +159,6 @@ const SYSTEM_INSTRUCTIONS = `
 
 const QUICK_ACTIONS = [
   {
-    label: "최신 뉴스 검색",
-    icon: Search,
-    message: "최신 뉴스 알려줘",
-  },
-  {
     label: "오늘의 AI 트렌드",
     icon: TrendingUp,
     message: "오늘의 AI 트렌드는?",
