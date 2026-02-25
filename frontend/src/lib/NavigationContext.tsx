@@ -17,6 +17,13 @@ interface NavigationContextValue {
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 
+function toLocalDateString(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
@@ -29,7 +36,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const navigateToTodayNews = useCallback(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = toLocalDateString();
     setSelectedKeyword(null);
     setSelectedDate(today);
     setActiveTab("news");

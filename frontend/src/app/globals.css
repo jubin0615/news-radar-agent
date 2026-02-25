@@ -288,6 +288,56 @@
     animation: pulse-neon 2s ease-in-out infinite;
   }
 
+  /* ── Holographic Bracket HUD ── */
+  .hud-bracket {
+    position: relative;
+  }
+  .hud-bracket::before,
+  .hud-bracket::after {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    pointer-events: none;
+  }
+  .hud-bracket::before {
+    content: "";
+    left: 0;
+    border-left: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-top: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-bottom: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-right: none;
+    border-radius: 2px 0 0 2px;
+    filter: drop-shadow(0 0 3px rgba(0, 212, 255, 0.3));
+  }
+  .hud-bracket::after {
+    content: "";
+    right: 0;
+    border-right: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-top: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-bottom: 1.5px solid rgba(0, 212, 255, 0.45);
+    border-left: none;
+    border-radius: 0 2px 2px 0;
+    filter: drop-shadow(0 0 3px rgba(0, 212, 255, 0.3));
+  }
+  .hud-bracket:hover::before,
+  .hud-bracket:hover::after {
+    border-color: rgba(0, 212, 255, 0.7);
+    filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.5));
+  }
+
+  .hud-glow-text {
+    text-shadow:
+      0 0 6px rgba(0, 212, 255, 0.6),
+      0 0 18px rgba(0, 212, 255, 0.25);
+    animation: hudPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes hudPulse {
+    0%, 100% { opacity: 1; text-shadow: 0 0 6px rgba(0, 212, 255, 0.6), 0 0 18px rgba(0, 212, 255, 0.25); }
+    50% { opacity: 0.8; text-shadow: 0 0 10px rgba(0, 212, 255, 0.8), 0 0 28px rgba(0, 212, 255, 0.4); }
+  }
+
   /* ── Neon dot indicator ────── */
   .neon-dot {
     width: 8px;

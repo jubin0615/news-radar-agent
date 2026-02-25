@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Newspaper,
@@ -64,6 +64,13 @@ interface CollectionStatus {
   lastCollectedAt: string | null;
 }
 
+function toLocalDateString(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // ── Time formatting ──────────────────────────────────────────── //
 function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -93,6 +100,9 @@ export default function NewsCollectionView({ className }: { className?: string }
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [activeDate, setActiveDate] = useState<string | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+
+  // 이전 fetch 취소용 AbortController (race condition 방지)
+  const abortRef = useRef<AbortController | null>(null);
 
   // SSE 실시간 진행률
   const {
@@ -126,6 +136,11 @@ export default function NewsCollectionView({ className }: { className?: string }
 
   // ── Fetch news ──
   const fetchNews = useCallback(async (filters?: { keyword?: string | null; date?: string | null }) => {
+    // 이전 요청 취소 (race condition 방지: 느린 전체목록 응답이 필터 결과를 덮어쓰는 문제)
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsLoadingNews(true);
     try {
       const keyword = filters?.keyword?.trim() || null;
@@ -135,15 +150,32 @@ export default function NewsCollectionView({ className }: { className?: string }
         : keyword
           ? `/api/news?keyword=${encodeURIComponent(keyword)}`
           : "/api/news";
-      const res = await fetch(url);
-      if (res.ok) {
-        const data: NewsItem[] = await res.json();
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        setNews([]);
+        return;
+      }
+
+      const data: NewsItem[] = await res.json();
+      if (date) {
+        const strictDateFiltered = data.filter(
+          (item) =>
+            typeof item.collectedAt === "string" &&
+            item.collectedAt.slice(0, 10) === date,
+        );
+        setNews(strictDateFiltered);
+      } else {
         setNews(data);
       }
-    } catch {
-      /* ignore */
+    } catch (err: unknown) {
+      // 취소된 요청은 무시 (새 요청이 진행 중)
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setNews([]);
     } finally {
-      setIsLoadingNews(false);
+      // 현재 컨트롤러가 아직 활성 상태일 때만 로딩 해제
+      if (abortRef.current === controller) {
+        setIsLoadingNews(false);
+      }
     }
   }, []);
 
@@ -222,14 +254,14 @@ export default function NewsCollectionView({ className }: { className?: string }
   };
 
   const handleTodayFilter = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = toLocalDateString();
     setActiveDate(today);
     setActiveFilter(null);
     setSearchInput("");
     clearSelectedKeyword();
   };
 
-  const isTodayFilterActive = activeDate === new Date().toISOString().split("T")[0];
+  const isTodayFilterActive = activeDate === toLocalDateString();
 
   return (
     <div className={cn("flex h-full flex-col gap-5", className)}>
