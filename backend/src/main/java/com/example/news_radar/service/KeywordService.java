@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -119,15 +120,15 @@ public class KeywordService {
     }
 
     /**
-     * 벡터 스토어 재빌드를 비동기로 안전하게 실행하기 위한 래퍼 메서드
-     * (NewsVectorStoreService 내부 메서드에 @Async가 붙어있다면 그냥 호출해도 됩니다)
+     * 벡터 스토어 재빌드를 비동기로 실행하여 API 응답을 블로킹하지 않도록 한다.
      */
     private void triggerVectorStoreRebuildAsync() {
-        try {
-            // @Async 처리가 되어있는지 확인 필수
-            newsVectorStoreService.rebuildForActiveKeywords();
-        } catch (Exception e) {
-            log.error("벡터 스토어 재빌드 트리거 실패", e);
-        }
+        CompletableFuture.runAsync(() -> {
+            try {
+                newsVectorStoreService.rebuildForActiveKeywords();
+            } catch (Exception e) {
+                log.error("벡터 스토어 재빌드 트리거 실패", e);
+            }
+        });
     }
 }
