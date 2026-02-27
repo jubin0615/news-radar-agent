@@ -314,7 +314,7 @@ function SubArticleCard({ news, index }: { news: NewsItem; index: number }) {
 }
 
 // ── Hero section ──────────────────────────────────────────────── //
-export default function MorningBriefingHero() {
+export default function MorningBriefing() {
   const [topNews, setTopNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 

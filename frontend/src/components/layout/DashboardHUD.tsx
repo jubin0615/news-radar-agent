@@ -11,7 +11,7 @@ interface HUDStats {
   lastCollectedAt: string | null;
 }
 
-interface HolographicHUDProps {
+interface DashboardHUDProps {
   stats: HUDStats | null;
   onTodayClick?: () => void;
 }
@@ -90,10 +90,10 @@ function formatRelativeTime(isoString: string): string {
 }
 
 // ── Main Component ───────────────────────────────────────────── //
-export default function HolographicHUD({
+export default function DashboardHUD({
   stats,
   onTodayClick,
-}: HolographicHUDProps) {
+}: DashboardHUDProps) {
   const isCollecting = stats?.collecting ?? false;
 
   return (

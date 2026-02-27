@@ -4,10 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import FloatingGuide from "./FloatingGuide";
-import WelcomeModal from "./WelcomeModal";
-import HolographicHUD from "./HolographicHUD";
+import DashboardHUD from "./DashboardHUD";
 import AiBriefingSwipeCards from "./AiBriefingSwipeCards";
-import CyberneticNodeMap from "./CyberneticNodeMap";
+import KeywordMap from "./KeywordMap";
 import { useNavigation } from "@/lib/NavigationContext";
 import type { NewsItem } from "@/types";
 
@@ -169,8 +168,6 @@ export default function DashboardView() {
 
   return (
     <>
-      <WelcomeModal />
-
       <div className="flex h-full flex-col gap-6 p-2">
         {/* ── Header + HUD ── */}
         <div className="flex flex-col gap-3">
@@ -179,7 +176,7 @@ export default function DashboardView() {
               대시보드
             </h1>
           </div>
-          <HolographicHUD stats={stats} onTodayClick={navigateToTodayNews} />
+          <DashboardHUD stats={stats} onTodayClick={navigateToTodayNews} />
         </div>
 
         {/* ── Neon divider ── */}
@@ -193,8 +190,8 @@ export default function DashboardView() {
           </div>
 
           {/* Right: Cybernetic Node Map — 40% */}
-          <div className="hidden lg:flex items-center min-w-0" style={{ flex: "4 4 0%" }}>
-            <CyberneticNodeMap className="w-full" />
+          <div className="relative hidden lg:flex items-center min-w-0" style={{ flex: "4 4 0%" }}>
+            <KeywordMap className="w-full" />
           </div>
         </div>
 

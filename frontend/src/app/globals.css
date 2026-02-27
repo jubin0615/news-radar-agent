@@ -263,6 +263,26 @@
     );
   }
 
+  /* ── Radar sweep beam (KeywordMap background) ── */
+  .radar-sweep-beam {
+    background: conic-gradient(
+      from 0deg at 50% 50%,
+      rgba(0, 212, 255, 0.18) 0deg,
+      rgba(0, 212, 255, 0.08) 30deg,
+      rgba(0, 212, 255, 0.02) 60deg,
+      transparent 90deg,
+      transparent 360deg
+    );
+    animation: radarSweep 4s linear infinite;
+    mask-image: radial-gradient(circle, black 30%, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle, black 30%, transparent 70%);
+  }
+
+  @keyframes radarSweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   /* ── Shimmer loading skeleton ── */
   .shimmer {
     background: linear-gradient(
