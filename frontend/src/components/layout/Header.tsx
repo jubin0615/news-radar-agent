@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bell, Wifi } from "lucide-react";
+import { Activity, Wifi } from "lucide-react";
 import { useNavigation, type TabId } from "@/lib/NavigationContext";
 
 const tabTitles: Record<TabId, string> = {
@@ -50,21 +50,6 @@ export default function Header() {
           </span>
         </div>
 
-        {/* Notifications */}
-        <button
-          className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-[rgba(255,255,255,0.05)]"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <Bell size={16} strokeWidth={1.8} />
-          {/* notification dot */}
-          <span
-            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full"
-            style={{
-              background: "#ef4444",
-              boxShadow: "0 0 6px rgba(239, 68, 68, 0.6)",
-            }}
-          />
-        </button>
       </div>
     </header>
   );

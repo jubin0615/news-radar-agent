@@ -195,7 +195,7 @@ function RadarCard({ item }: { item: ReportNewsItem }) {
               color: "rgb(192,132,252)",
             }}
           >
-            혁신 {item.innovationScore}/50
+            혁신 {item.innovationScore}/15
           </span>
         )}
         {item.category && (

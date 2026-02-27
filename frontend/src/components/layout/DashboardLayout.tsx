@@ -33,7 +33,9 @@ function DashboardContent({ children }: DashboardLayoutProps) {
           </div>
 
           {activeTab === "dashboard" && <DashboardView />}
-          {activeTab === "news" && <NewsCollectionView className="h-full" />}
+          <div className={activeTab === "news" ? "h-full" : "hidden"}>
+            <NewsCollectionView className="h-full" />
+          </div>
           {activeTab !== "dashboard" && activeTab !== "news" && activeTab !== "chat" && children}
         </main>
       </div>

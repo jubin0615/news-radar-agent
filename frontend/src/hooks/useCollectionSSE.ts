@@ -59,6 +59,10 @@ export function useCollectionSSE(): UseCollectionSSEReturn {
         // 종료 이벤트 시 스트림 자동 닫기
         if (data.type === "COMPLETED" || data.type === "ERROR") {
           stopStream();
+          // 수집 완료를 전역으로 알려 대시보드 등이 즉시 갱신하도록 함
+          if (data.type === "COMPLETED") {
+            window.dispatchEvent(new CustomEvent("news-collection-completed"));
+          }
         }
       } catch (e) {
         console.warn("[SSE] Failed to parse event:", e);

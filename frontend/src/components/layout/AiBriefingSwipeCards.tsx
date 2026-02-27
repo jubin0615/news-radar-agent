@@ -278,6 +278,8 @@ export default function AiBriefingSwipeCards({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  const prevCardIdsRef = useRef<string>("");
+
   const fetchCards = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
     try {
@@ -291,8 +293,14 @@ export default function AiBriefingSwipeCards({
         .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
         .slice(0, 5);
 
+      // 카드 구성이 달라졌으면 처음부터 보여주기
+      const newIds = top5.map((n) => n.id).join(",");
+      if (prevCardIdsRef.current && prevCardIdsRef.current !== newIds) {
+        setCurrentIndex(0);
+      }
+      prevCardIdsRef.current = newIds;
+
       setCards(top5);
-      setCurrentIndex((prev) => Math.max(0, Math.min(prev, top5.length)));
     } catch {
       /* ignore */
     } finally {
@@ -317,13 +325,19 @@ export default function AiBriefingSwipeCards({
       }
     };
 
+    const handleCollectionCompleted = () => {
+      void fetchCards(false);
+    };
+
     window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("news-collection-completed", handleCollectionCompleted);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("news-collection-completed", handleCollectionCompleted);
     };
   }, [fetchCards]);
 

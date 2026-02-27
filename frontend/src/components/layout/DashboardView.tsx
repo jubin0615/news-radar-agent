@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import FloatingGuide from "./FloatingGuide";
@@ -134,13 +134,22 @@ export default function DashboardView() {
   const [loading, setLoading] = useState(true);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const { navigateToTodayNews } = useNavigation();
+  const prevCollectingRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await fetch("/api/news/collection-status");
         if (res.ok) {
-          setStats(await res.json());
+          const data: DashboardStats = await res.json();
+
+          // 수집 중 → 완료 전환 감지 시 즉시 브리핑 갱신 이벤트 발행
+          if (prevCollectingRef.current === true && !data.collecting) {
+            window.dispatchEvent(new CustomEvent("news-collection-completed"));
+          }
+          prevCollectingRef.current = data.collecting;
+
+          setStats(data);
         }
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);

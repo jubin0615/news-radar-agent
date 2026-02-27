@@ -5,6 +5,7 @@ import { ExternalLink, Brain, Sparkles, Tag } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { NewsGrade } from "@/types";
+import type { Components } from "react-markdown";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 
@@ -37,6 +38,106 @@ const gradeColour: Record<string, string> = {
 
 /* ═══ Component ══════════════════════════════════════════════════ */
 
+/* Custom react-markdown components for rich rendering */
+const mdComponents: Components = {
+  h1: ({ children }) => (
+    <h1
+      className="mb-3 mt-1 text-base font-bold tracking-tight"
+      style={{ color: "var(--neon-purple)" }}
+    >
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2
+      className="mb-2 mt-4 flex items-center gap-2 border-b pb-1.5 text-[13px] font-bold"
+      style={{
+        color: "var(--text-primary)",
+        borderColor: "rgba(168, 85, 247, 0.2)",
+      }}
+    >
+      <span
+        className="inline-block h-3 w-0.5 rounded-full"
+        style={{ background: "var(--neon-purple)" }}
+      />
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3
+      className="mb-1.5 mt-3 text-[12px] font-semibold"
+      style={{ color: "var(--neon-blue)" }}
+    >
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => (
+    <p
+      className="mb-2.5 text-[12.5px] leading-[1.8]"
+      style={{ color: "var(--text-secondary)" }}
+    >
+      {children}
+    </p>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-semibold" style={{ color: "var(--text-primary)" }}>
+      {children}
+    </strong>
+  ),
+  ul: ({ children }) => <ul className="mb-3 flex flex-col gap-1.5 pl-1">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-3 flex flex-col gap-1.5 pl-1">{children}</ol>,
+  li: ({ children }) => (
+    <li className="flex items-start gap-2 text-[12.5px] leading-[1.75]">
+      <span
+        className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ background: "var(--neon-purple)", opacity: 0.7 }}
+      />
+      <span style={{ color: "var(--text-secondary)" }}>{children}</span>
+    </li>
+  ),
+  hr: () => (
+    <hr
+      className="my-4"
+      style={{ borderColor: "rgba(168, 85, 247, 0.15)" }}
+    />
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline decoration-dotted underline-offset-2"
+      style={{ color: "var(--neon-blue)" }}
+    >
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote
+      className="my-2 rounded-r-lg border-l-2 py-1 pl-3 text-[12px] italic"
+      style={{
+        borderColor: "var(--neon-purple)",
+        background: "rgba(168, 85, 247, 0.05)",
+        color: "var(--text-muted)",
+      }}
+    >
+      {children}
+    </blockquote>
+  ),
+  code: ({ children }) => (
+    <code
+      className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+      style={{
+        background: "rgba(0, 212, 255, 0.08)",
+        color: "var(--neon-blue)",
+        border: "1px solid rgba(0, 212, 255, 0.12)",
+      }}
+    >
+      {children}
+    </code>
+  ),
+};
+
 export default function RagAnswerCard({ data }: { data: RagAnswerData }) {
   const { answer, sources } = data;
 
@@ -67,24 +168,10 @@ export default function RagAnswerCard({ data }: { data: RagAnswerData }) {
         </div>
 
         {/* 마크다운 답변 */}
-        <div
-          className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed"
-          style={{ color: "var(--text-primary)" }}
-        >
+        <div className="max-w-none text-sm leading-relaxed">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--neon-blue)" }}
-                >
-                  {children}
-                </a>
-              ),
-            }}
+            components={mdComponents}
           >
             {answer}
           </ReactMarkdown>
