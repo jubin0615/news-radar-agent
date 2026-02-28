@@ -20,8 +20,8 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,8 +47,8 @@ public class NaverNewsCrawler implements NewsCrawler {
     };
 
     private final Random random = new Random();
-    private final ExecutorService contentFetchExecutor =
-            Executors.newFixedThreadPool(CONTENT_FETCH_POOL_SIZE, r -> {
+    private final ScheduledExecutorService contentFetchExecutor =
+            Executors.newScheduledThreadPool(CONTENT_FETCH_POOL_SIZE, r -> {
                 Thread t = new Thread(r, "content-fetch");
                 t.setDaemon(true);
                 return t;
@@ -101,7 +101,7 @@ public class NaverNewsCrawler implements NewsCrawler {
                 }
             }
 
-            // 2단계: 신규 URL만 본문 크롤링을 CompletableFuture로 병렬 실행
+            // 2단계: 신규 URL만 본문 크롤링을 논블로킹 스케줄 방식으로 병렬 실행
             return fetchContentsInParallel(titleAndLinks);
 
         } catch (IOException e) {
@@ -149,28 +149,33 @@ public class NaverNewsCrawler implements NewsCrawler {
     }
 
     /**
-     * 기사 목록의 본문을 병렬로 크롤링합니다.
-     * 스레드풀(4개)로 동시 요청 수를 제한하고, 각 작업 간 stagger delay를 적용합니다.
+     * 기사 목록의 본문을 논블로킹 스케줄 방식으로 병렬 크롤링합니다.
+     * ScheduledExecutorService.schedule()을 사용하여 각 작업을 stagger delay만큼
+     * 지연 예약하므로, 스레드를 블로킹하지 않고 요청 간격을 분산합니다.
      */
     private List<RawNewsItem> fetchContentsInParallel(List<TitleAndLink> items) {
         List<CompletableFuture<RawNewsItem>> futures = new ArrayList<>();
 
         for (int i = 0; i < items.size(); i++) {
             TitleAndLink item = items.get(i);
-            int staggerDelay = i * STAGGER_DELAY_MS; // anti-bot: 요청 간격 분산
+            long delay = (long) i * STAGGER_DELAY_MS;
 
-            CompletableFuture<RawNewsItem> future = CompletableFuture.supplyAsync(() -> {
-                if (staggerDelay > 0) {
-                    sleep(staggerDelay);
+            // schedule()로 논블로킹 지연 예약 → CompletableFuture로 래핑
+            CompletableFuture<RawNewsItem> future = new CompletableFuture<>();
+            contentFetchExecutor.schedule(() -> {
+                try {
+                    String content = fetchArticleContent(item.link);
+                    future.complete(new RawNewsItem(item.title, item.link, content));
+                } catch (Exception ex) {
+                    future.completeExceptionally(ex);
                 }
-                String content = fetchArticleContent(item.link);
-                return new RawNewsItem(item.title, item.link, content);
-            }, contentFetchExecutor).exceptionally(ex -> {
+            }, delay, TimeUnit.MILLISECONDS);
+
+            // 예외 발생 시 빈 content로 대체
+            futures.add(future.exceptionally(ex -> {
                 log.warn("[네이버] 본문 병렬 크롤링 실패. url={}, error={}", item.link, ex.getMessage());
                 return new RawNewsItem(item.title, item.link, "");
-            });
-
-            futures.add(future);
+            }));
         }
 
         // 전체 완료 대기 (타임아웃 적용)
@@ -301,13 +306,5 @@ public class NaverNewsCrawler implements NewsCrawler {
             log.warn("[네이버] 본문 크롤링 실패. url={}, error={}", articleUrl, e.getMessage());
         }
         return "";
-    }
-
-    private void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 }

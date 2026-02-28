@@ -1,11 +1,13 @@
 package com.example.news_radar.service;
 
+import com.example.news_radar.config.SourceTierProperties;
 import com.example.news_radar.dto.AiEvaluation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
 import java.util.List;
 
 /**
@@ -21,6 +23,7 @@ import java.util.List;
 public class ImportanceEvaluator {
 
     private final EmbeddingModel embeddingModel;
+    private final SourceTierProperties sourceTierProperties;
 
     // =====================================================================
     // 1. LLM 평가 점수 (최대 50점)
@@ -168,15 +171,24 @@ public class ImportanceEvaluator {
     private SourceTier detectSourceTier(String url) {
         if (url == null || url.isBlank()) return SourceTier.GENERAL;
         String domain = extractDomain(url).toLowerCase();
-        if (MAJOR_DOMAINS.stream().anyMatch(domain::contains))    return SourceTier.MAJOR;
-        if (STANDARD_DOMAINS.stream().anyMatch(domain::contains)) return SourceTier.STANDARD;
+        if (sourceTierProperties.getMajorDomains().stream().anyMatch(domain::contains))    return SourceTier.MAJOR;
+        if (sourceTierProperties.getStandardDomains().stream().anyMatch(domain::contains)) return SourceTier.STANDARD;
         return SourceTier.GENERAL;
     }
 
+    /**
+     * java.net.URI를 사용하여 URL에서 도메인(호스트)을 안전하게 추출합니다.
+     * 비정상 URL이나 파싱 실패 시 빈 문자열을 반환합니다.
+     */
     private String extractDomain(String url) {
-        String noScheme = url.replaceFirst("^https?://", "");
-        int slashIdx = noScheme.indexOf('/');
-        return slashIdx > 0 ? noScheme.substring(0, slashIdx) : noScheme;
+        try {
+            URI uri = URI.create(url);
+            String host = uri.getHost();
+            return host != null ? host : "";
+        } catch (Exception e) {
+            log.debug("URL 도메인 파싱 실패: {}", url);
+            return "";
+        }
     }
 
     // =====================================================================
@@ -209,30 +221,6 @@ public class ImportanceEvaluator {
         final int score;
         SourceTier(int score) { this.score = score; }
     }
-
-    /** 메이저 언론사 / 공식 기관 도메인 (20점) */
-    private static final List<String> MAJOR_DOMAINS = List.of(
-            // 국제 주요 언론
-            "reuters.com", "bloomberg.com", "nytimes.com", "wsj.com",
-            "ft.com", "bbc.com", "apnews.com",
-            // 글로벌 IT 메이저
-            "techcrunch.com", "wired.com", "theverge.com", "arstechnica.com",
-            "venturebeat.com",
-            // 국내 주요 언론
-            "yna.co.kr", "chosun.com", "joongang.co.kr", "joins.com",
-            "donga.com", "mk.co.kr", "hankyung.com", "kbs.co.kr", "sbs.co.kr",
-            "ytn.co.kr", "sedaily.com", "edaily.co.kr"
-    );
-
-    /** IT 전문 미디어 도메인 (15점) */
-    private static final List<String> STANDARD_DOMAINS = List.of(
-            // 국제 IT 전문
-            "zdnet.com", "infoq.com", "thenewstack.io", "devops.com",
-            "techradar.com", "towardsdatascience.com",
-            // 국내 IT 전문
-            "zdnet.co.kr", "itworld.co.kr", "ciokorea.com", "boannews.com",
-            "etnews.com", "ddaily.co.kr", "aitimes.com", "digitaltoday.co.kr"
-    );
 
     // =====================================================================
     // 유틸

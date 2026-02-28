@@ -5,19 +5,25 @@ import com.example.news_radar.entity.News;
 import com.example.news_radar.repository.NewsRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * RAG (Retrieval-Augmented Generation) 파이프라인 서비스
  *
  * 흐름: 질문 임베딩 → 유사 뉴스 검색 → 컨텍스트 주입 → GPT-4o-mini 생성 → 답변 반환
+ *
+ * 프롬프트는 src/main/resources/prompts/*.st 파일에서 로드합니다.
  */
 @Slf4j
 @Service
@@ -34,15 +40,21 @@ public class RagService {
     private final NewsVectorStoreService vectorStoreService;
     private final NewsRepository         newsRepository;
     private final ChatClient             chatClient;
+    private final Resource               askPromptResource;
+    private final Resource               trendBriefingPromptResource;
 
     public RagService(
             NewsVectorStoreService vectorStoreService,
             NewsRepository newsRepository,
-            ChatClient.Builder chatClientBuilder
+            ChatClient.Builder chatClientBuilder,
+            @Value("classpath:prompts/rag-ask.st") Resource askPromptResource,
+            @Value("classpath:prompts/rag-trend-briefing.st") Resource trendBriefingPromptResource
     ) {
-        this.vectorStoreService = vectorStoreService;
-        this.newsRepository     = newsRepository;
-        this.chatClient         = chatClientBuilder.build();
+        this.vectorStoreService          = vectorStoreService;
+        this.newsRepository              = newsRepository;
+        this.chatClient                  = chatClientBuilder.build();
+        this.askPromptResource           = askPromptResource;
+        this.trendBriefingPromptResource = trendBriefingPromptResource;
     }
 
     /**
@@ -70,35 +82,12 @@ public class RagService {
         // 2. 검색된 기사를 번호가 붙은 컨텍스트 블록으로 변환
         String context = buildContext(retrieved);
 
-        // 3. RAG 프롬프트 구성 (Explicit Citation + Hallucination 방지 강화)
-        String prompt = """
-                너는 IT 기술 뉴스 분석 전문가야.
-                아래 [참고 기사] 섹션에 번호가 매겨진 실제 뉴스 기사들이 있어.
-                반드시 아래 규칙을 엄격하게 지켜서 한국어로 답변해.
-
-                [필수 규칙]
-                1. 답변의 모든 정보는 반드시 [참고 기사]에 있는 내용에서만 가져와야 한다.
-                2. 각 문장의 끝에 반드시 해당 정보의 출처인 기사 번호를 [1], [2], [3] 형식으로 표기해라.
-                   한 문장에 여러 기사를 참고했다면 [1][3]처럼 병기해라.
-                3. [참고 기사]에 없는 내용은 절대로 지어내거나 추측하지 마라.
-                   만약 질문에 대한 정보가 참고 기사에 부족하면,
-                   "제공된 기사에서는 해당 정보를 확인할 수 없습니다."라고 솔직하게 답변해라.
-                4. 답변 마지막에 '---' 구분선 아래에 참고한 기사 번호와 제목을 목록으로 정리해라.
-
-                [마크다운 포맷 규칙 — 반드시 지켜라]
-                - 답변 전체를 **마크다운 형식**으로 작성해라.
-                - 주제별로 `## 소제목`을 사용해 섹션을 나눠라.
-                - 핵심 포인트는 `- ` 불릿 리스트로 정리해라.
-                - **볼드 사용 규칙**: 각 섹션(소제목 단위)에서 가장 핵심이 되는 문장 딱 1개만 통째로 **볼드** 처리해라. 키워드나 숫자 단위로 볼드하지 마라.
-                - 한 문단은 최대 2~3문장으로 짧게 유지해라.
-                - 줄글(장문 단락)은 절대 사용하지 마라. 반드시 구조화된 형식으로 작성해라.
-
-                [참고 기사]
-                %s
-
-                [사용자 질문]
-                %s
-                """.formatted(context, question);
+        // 3. 외부 프롬프트 템플릿 로드 + 변수 주입
+        PromptTemplate promptTemplate = new PromptTemplate(askPromptResource);
+        String prompt = promptTemplate.render(Map.of(
+                "context", context,
+                "question", question
+        ));
 
         // 4. GPT-4o-mini로 답변 생성
         String answer;
@@ -145,33 +134,9 @@ public class RagService {
         // 뉴스를 번호 붙인 컨텍스트 블록으로 변환
         String context = buildTrendContext(trendNews);
 
-        String prompt = """
-                너는 IT 기술 뉴스 트렌드 분석 전문가야.
-                아래 [오늘의 트렌드 뉴스]는 전체 중요도가 HIGH 등급 이상이면서,
-                시의성(Timeliness) 점수가 가장 높은 순서로 엄선된 뉴스야.
-
-                반드시 아래 규칙을 지켜서 한국어로 **트렌드 브리핑 리포트**를 작성해.
-
-                [필수 규칙]
-                1. 각 뉴스가 **왜 오늘 가장 시의성 있고 중요한 트렌드인지**를 강조하며 분석해.
-                2. 단순 나열이 아니라, 뉴스들 사이의 공통 흐름이나 연결 고리가 있다면 함께 엮어서 설명해.
-                3. 각 뉴스 항목에 해당하는 기사 번호를 [1], [2] 형식으로 인용해.
-                4. 답변 마지막에 '---' 구분선 아래에 참고한 기사 번호와 제목을 목록으로 정리해.
-                5. [오늘의 트렌드 뉴스]에 없는 내용은 절대 지어내지 마.
-                6. 브리핑 서두에 `# 오늘의 AI 트렌드 브리핑` 마크다운 제목을 넣어줘.
-
-                [마크다운 포맷 규칙 — 반드시 지켜라]
-                - 답변 전체를 **마크다운 형식**으로 작성해라.
-                - 각 뉴스 분석은 `## 소제목`으로 구분해라.
-                - 핵심 포인트는 `- ` 불릿 리스트로 정리해라.
-                - **볼드 사용 규칙**: 각 섹션(소제목 단위)에서 가장 핵심이 되는 문장 딱 1개만 통째로 **볼드** 처리해라. 키워드나 숫자 단위로 볼드하지 마라.
-                - 뉴스 간 연결 분석은 `## 🔗 트렌드 연결 분석` 섹션으로 별도 작성해라.
-                - 한 문단은 최대 2~3문장으로 짧게 유지해라.
-                - 줄글(장문 단락)은 절대 사용하지 마라. 반드시 구조화된 형식으로 작성해라.
-
-                [오늘의 트렌드 뉴스]
-                %s
-                """.formatted(context);
+        // 외부 프롬프트 템플릿 로드 + 변수 주입
+        PromptTemplate promptTemplate = new PromptTemplate(trendBriefingPromptResource);
+        String prompt = promptTemplate.render(Map.of("context", context));
 
         String answer;
         try {
