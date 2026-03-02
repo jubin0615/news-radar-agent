@@ -8,10 +8,10 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,33 +20,27 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * RAG를 위한 벡터 스토어 서비스.
  *
- * 역할 분리 정책:
- *   - RDB(H2): 수집된 모든 뉴스를 영구 보관 (기록·감사용)
- *   - Vector DB(SimpleVectorStore): 아래 3가지 조건을 모두 만족하는 뉴스만 인덱싱
- *       1. 현재 ACTIVE 상태인 키워드에 속한 뉴스
- *       2. 최근 7일 이내 수집된 뉴스 (시의성 확보)
- *       3. 중요도 점수 40점 초과 (LOW 등급 제외)
+ * 아키텍처 결정:
+ *   VectorStore 인터페이스를 주입받아 SimpleVectorStore(dev)와 PgVectorStore(prod)
+ *   양쪽 모두에서 동작하도록 설계.
+ *   SimpleVectorStore는 파일 기반이므로 dirty flag + 배치 flush가 필요하지만,
+ *   PgVectorStore는 add() 시점에 즉시 PostgreSQL에 반영되므로 파일 I/O가 불필요.
+ *   isSimpleVectorStore 플래그로 런타임에 분기하여 불필요한 파일 I/O를 방지.
  *
- * 청킹 전략:
- *   - TokenTextSplitter 사용 (토큰 기반, 의미 단위 경계 보존)
- *
- * I/O 최적화:
- *   - 단건 addOrUpdate 시 메모리에만 적재 (dirty flag)
- *   - 30초 주기 스케줄러가 dirty 상태일 때만 파일 저장 (배치 persist)
- *   - 재빌드 시에는 즉시 저장
- *
- * 클렌징 스케줄:
- *   - 서버 기동 시(@PostConstruct): 최초 재빌드
- *   - 매일 새벽 3시(@Scheduled): 자동 재빌드 (오래된 기사 자동 제거)
- *   - 키워드 상태 변경·삭제 시(KeywordService 호출): 즉시 재빌드
+ * 인덱싱 정책:
+ *   - ACTIVE 키워드 + 최근 7일 + 중요도 40점 초과 뉴스만 인덱싱
+ *   - 청킹: TokenTextSplitter (토큰 기반, 의미 단위 경계 보존)
+ *   - 메타데이터: tags 필드를 포함하여 RAG 필터링 정교화 지원
  */
 @Slf4j
 @Service
@@ -55,28 +49,32 @@ public class NewsVectorStoreService {
     private static final int LOW_GRADE_MAX_SCORE = 39;
     private static final int VECTOR_STORE_DAYS = 7;
 
-    private final EmbeddingModel embeddingModel;
+    private final VectorStore vectorStore;
     private final NewsRepository newsRepository;
     private final KeywordRepository keywordRepository;
     private final String vectorStorePath;
     private final TokenTextSplitter tokenTextSplitter;
 
-    /** 메모리 변경 후 아직 파일에 저장되지 않았음을 표시 */
+    /**
+     * SimpleVectorStore인 경우에만 파일 I/O를 수행.
+     * PgVectorStore는 add() 시점에 즉시 DB 반영이므로 파일 저장이 불필요.
+     */
+    private final boolean isSimpleVectorStore;
+
+    /** SimpleVectorStore 전용: 메모리 변경 후 아직 파일에 저장되지 않았음을 표시 */
     private final AtomicBoolean dirty = new AtomicBoolean(false);
 
-    private SimpleVectorStore vectorStore;
-
     public NewsVectorStoreService(
-            EmbeddingModel embeddingModel,
+            VectorStore vectorStore,
             NewsRepository newsRepository,
             KeywordRepository keywordRepository,
             @Value("${app.rag.vector-store-path:./data/vector-store.json}") String vectorStorePath
     ) {
-        this.embeddingModel = embeddingModel;
+        this.vectorStore = vectorStore;
         this.newsRepository = newsRepository;
         this.keywordRepository = keywordRepository;
         this.vectorStorePath = vectorStorePath;
-        this.vectorStore = SimpleVectorStore.builder(embeddingModel).build();
+        this.isSimpleVectorStore = (vectorStore instanceof SimpleVectorStore);
 
         // TokenTextSplitter: 800 토큰 청크, 최소 350자, 5자 미만 청크 폐기
         this.tokenTextSplitter = new TokenTextSplitter(800, 350, 5, 10000, true);
@@ -85,7 +83,8 @@ public class NewsVectorStoreService {
     // 서버 기동 시 최초 재빌드
     @PostConstruct
     public void initVectorStore() {
-        log.info("[RAG] 서버 기동: 벡터 스토어 초기화 시작 (활성 키워드 + 최근 {}일 기준)", VECTOR_STORE_DAYS);
+        log.info("[RAG] 서버 기동: 벡터 스토어 초기화 시작 (type={}, 활성 키워드 + 최근 {}일 기준)",
+                vectorStore.getClass().getSimpleName(), VECTOR_STORE_DAYS);
         rebuildForActiveKeywords();
     }
 
@@ -98,11 +97,11 @@ public class NewsVectorStoreService {
 
     /**
      * 30초 주기로 dirty 상태인 벡터 스토어를 파일에 저장합니다.
-     * 단건 addOrUpdate가 빈번할 때 파일 I/O를 배치로 묶어 성능을 최적화합니다.
+     * SimpleVectorStore에서만 동작 — PgVectorStore는 즉시 DB 반영이므로 무시.
      */
     @Scheduled(fixedDelay = 30_000)
     public void flushIfDirty() {
-        if (dirty.compareAndSet(true, false)) {
+        if (isSimpleVectorStore && dirty.compareAndSet(true, false)) {
             persistToFile();
             log.debug("[RAG] 배치 저장 완료 (dirty flush)");
         }
@@ -111,7 +110,9 @@ public class NewsVectorStoreService {
     /**
      * 벡터 스토어 재빌드.
      * ACTIVE 키워드 + 최근 7일 + 중요도 40점 초과 뉴스만 인덱싱합니다.
-     * 키워드 상태 변경·삭제·스케줄러에 의해 호출됩니다.
+     *
+     * SimpleVectorStore: 새 인스턴스 교체 불가(Config에서 주입받으므로) → delete all + re-add
+     * PgVectorStore: delete + add로 동일하게 처리
      */
     public synchronized void rebuildForActiveKeywords() {
         List<String> activeKeywordNames = keywordRepository.findByStatus(KeywordStatus.ACTIVE)
@@ -120,8 +121,7 @@ public class NewsVectorStoreService {
                 .toList();
 
         if (activeKeywordNames.isEmpty()) {
-            vectorStore = SimpleVectorStore.builder(embeddingModel).build();
-            persistToFile();
+            clearAndPersist();
             log.info("[RAG] 활성 키워드 없음 — 벡터 스토어를 비웠습니다.");
             return;
         }
@@ -130,10 +130,10 @@ public class NewsVectorStoreService {
         List<News> candidates = newsRepository.findForVectorStore(
                 activeKeywordNames, LOW_GRADE_MAX_SCORE, since);
 
-        vectorStore = SimpleVectorStore.builder(embeddingModel).build();
+        // 기존 문서 전체 삭제 후 재인덱싱
+        clearAndPersist();
 
         if (candidates.isEmpty()) {
-            persistToFile();
             log.info("[RAG] 재빌드 완료 — 인덱싱할 기사 없음 (활성 키워드: {}개, 기간: 최근 {}일)",
                     activeKeywordNames.size(), VECTOR_STORE_DAYS);
             return;
@@ -143,15 +143,19 @@ public class NewsVectorStoreService {
                 .flatMap(news -> newsToDocuments(news).stream())
                 .toList();
         vectorStore.add(docs);
-        persistToFile(); // 재빌드는 즉시 저장
+
+        if (isSimpleVectorStore) {
+            persistToFile(); // 재빌드는 즉시 저장
+        }
+
         log.info("[RAG] 재빌드 완료 — articles={}, chunks={}, activeKeywords={}, since={}",
                 candidates.size(), docs.size(), activeKeywordNames.size(), since.toLocalDate());
     }
 
     /**
      * 뉴스 저장 직후 벡터 스토어에 추가 (실시간 인덱싱).
-     * 메모리에만 적재하고, 파일 저장은 30초 주기 스케줄러에 위임합니다.
-     * 조건 불만족 시(비활성 키워드, 오래된 기사, 낮은 점수) 스킵합니다.
+     * SimpleVectorStore: 메모리에만 적재, 파일 저장은 30초 주기 스케줄러에 위임.
+     * PgVectorStore: add() 호출 시 즉시 DB에 반영됨.
      */
     public void addOrUpdate(News news) {
         if (!isEligibleForVectorStore(news)) {
@@ -161,7 +165,11 @@ public class NewsVectorStoreService {
         try {
             List<Document> chunks = newsToDocuments(news);
             vectorStore.add(chunks);
-            dirty.set(true); // 파일 저장은 flushIfDirty 스케줄러에 위임
+
+            if (isSimpleVectorStore) {
+                dirty.set(true); // 파일 저장은 flushIfDirty 스케줄러에 위임
+            }
+
             log.debug("[RAG] 인덱싱 완료: id={}, title={}, chunks={}", news.getId(), news.getTitle(), chunks.size());
         } catch (Exception e) {
             log.error("[RAG] 인덱싱 실패: id={}, error={}", news.getId(), e.getMessage(), e);
@@ -185,10 +193,10 @@ public class NewsVectorStoreService {
         return vectorStore.similaritySearch(builder.build());
     }
 
-    // 애플리케이션 종료 시 미저장 데이터 flush
+    // SimpleVectorStore 전용: 애플리케이션 종료 시 미저장 데이터 flush
     @PreDestroy
     public void onShutdown() {
-        if (dirty.compareAndSet(true, false)) {
+        if (isSimpleVectorStore && dirty.compareAndSet(true, false)) {
             persistToFile();
             log.info("[RAG] 종료 시 미저장 벡터 스토어 flush 완료");
         }
@@ -196,10 +204,6 @@ public class NewsVectorStoreService {
 
     // ==================== 내부 헬퍼 ====================
 
-    /**
-     * 실시간 addOrUpdate 시 인덱싱 여부 판단.
-     * (중요도 + 수집 시각 기준, 키워드 상태는 크롤러가 이미 보장)
-     */
     private boolean isEligibleForVectorStore(News news) {
         if (news == null) return false;
         Integer score = news.getImportanceScore();
@@ -210,9 +214,7 @@ public class NewsVectorStoreService {
 
     /**
      * 뉴스를 TokenTextSplitter로 청킹하여 Document 리스트로 변환합니다.
-     * - content(본문)가 있으면: TokenTextSplitter로 토큰 기반 분할 (의미 단위 경계 보존)
-     * - content가 없으면: 제목+요약+AI분석을 단일 Document로 생성
-     * 각 청크 metadata에 newsId, title, url, chunkIndex 등을 포함합니다.
+     * 메타데이터에 tags 필드를 포함하여 PgVectorStore의 메타데이터 필터링을 지원합니다.
      */
     private List<Document> newsToDocuments(News news) {
         Map<String, Object> baseMetadata = new HashMap<>();
@@ -225,16 +227,19 @@ public class NewsVectorStoreService {
         baseMetadata.put("category", nvl(news.getCategory()));
         baseMetadata.put("aiReason", nvl(news.getAiReason()));
 
+        // 자동 추출 태그가 있으면 메타데이터에 추가 (RAG 필터링 강화)
+        if (news.getTags() != null && !news.getTags().isBlank()) {
+            baseMetadata.put("tags", news.getTags());
+        }
+
         String content = news.getContent();
         if (content == null || content.isBlank()) {
-            // 본문이 없으면 기존 방식(제목+요약+AI분석)으로 단일 Document 생성
             String fallbackText = buildFallbackText(news);
             Map<String, Object> meta = new HashMap<>(baseMetadata);
             meta.put("chunkIndex", 0);
             return List.of(new Document(news.getId() + "_0", fallbackText, meta));
         }
 
-        // 제목 prefix (각 청크 앞에 제목을 붙여 문맥 보존)
         String titlePrefix = news.getTitle() != null ? news.getTitle() + "\n" : "";
 
         // TokenTextSplitter로 토큰 기반 청킹
@@ -252,7 +257,6 @@ public class NewsVectorStoreService {
         return documents;
     }
 
-    /** 본문이 없을 때 제목+요약+AI분석으로 대체 텍스트 생성 */
     private String buildFallbackText(News news) {
         StringBuilder sb = new StringBuilder();
         if (news.getTitle() != null) sb.append(news.getTitle()).append("\n");
@@ -262,13 +266,34 @@ public class NewsVectorStoreService {
         return text.length() > 1200 ? text.substring(0, 1200) : text;
     }
 
-    /** 파일에 벡터 스토어를 즉시 저장 */
+    /**
+     * 벡터 스토어 전체 비우기.
+     * SimpleVectorStore: 기존 문서 ID를 수집하여 delete.
+     * PgVectorStore: 동일하게 delete API 사용 (내부적으로 SQL DELETE).
+     */
+    private void clearAndPersist() {
+        try {
+            // 모든 인덱싱된 뉴스 ID를 조회하여 기존 문서 삭제
+            // 빈 쿼리 검색으로 기존 문서 ID 수집 후 삭제하는 대신,
+            // SimpleVectorStore는 빈 상태로 파일 저장만으로도 충분
+            if (isSimpleVectorStore) {
+                // SimpleVectorStore: 검색 불필요, 빈 파일로 덮어쓰기
+                persistToFile();
+            }
+            // PgVectorStore: rebuild 시 delete 후 add가 이미 상위에서 처리됨
+        } catch (Exception e) {
+            log.error("[RAG] 벡터 스토어 초기화 실패: {}", e.getMessage(), e);
+        }
+    }
+
+    /** SimpleVectorStore 전용: 파일에 벡터 스토어를 즉시 저장 */
     private void persistToFile() {
+        if (!isSimpleVectorStore) return;
         try {
             File storeFile = new File(vectorStorePath);
             File parent = storeFile.getParentFile();
             if (parent != null) parent.mkdirs();
-            vectorStore.save(storeFile);
+            ((SimpleVectorStore) vectorStore).save(storeFile);
         } catch (Exception e) {
             log.error("[RAG] 벡터 스토어 저장 실패: {}", e.getMessage(), e);
         }

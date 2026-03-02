@@ -18,9 +18,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -39,6 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
  * - API 호출로 수동 수집
  * - SSE 실시간 진행률 지원 (CollectionProgressListener)
  * - 키워드별 재수집 (Soft Delete 후 신규 수집)
+ *
+ * 프로덕션 개선:
+ * - CrawlDeduplicationService: 키워드 간 교집합 기사 중복 크롤링/LLM 평가 방지
+ * - TagExtractionService: 본문 기반 핵심 태그 자동 추출 → Vector DB 메타데이터 강화
  */
 @Slf4j
 @Service
@@ -52,6 +54,8 @@ public class NewsService {
     private final CrawlerManager crawlerManager;
     private final ImportanceEvaluator importanceEvaluator;
     private final NewsVectorStoreService newsVectorStoreService;
+    private final CrawlDeduplicationService deduplicationService;
+    private final TagExtractionService tagExtractionService;
 
     // 수집 중복 실행 방지 플래그
     private final AtomicBoolean collecting = new AtomicBoolean(false);
@@ -147,6 +151,9 @@ public class NewsService {
             return;
         }
 
+        // 수집 사이클 시작: 글로벌 중복 방지 세션 초기화
+        deduplicationService.beginSession();
+
         try {
             List<Keyword> activeKeywords = keywordRepository.findByStatus(KeywordStatus.ACTIVE);
             if (activeKeywords.isEmpty()) {
@@ -200,6 +207,7 @@ public class NewsService {
                     "ERROR", null,
                     "수집 중 오류 발생: " + e.getMessage(), 0, 0, 0, null));
         } finally {
+            deduplicationService.endSession();
             collecting.set(false);
             completeAllSseListeners();
         }
@@ -228,10 +236,15 @@ public class NewsService {
                     .map(Keyword::getName)
                     .collect(Collectors.toList());
 
-            // 3. 신규 수집
-            int saved = collectAndSaveForKeyword(keyword, allKeywordNames);
-            lastCollectedAt = LocalDateTime.now();
-            log.info("[재수집 완료] 키워드 '{}' {}건 신규 저장. time={}", keyword, saved, now());
+            // 3. 재수집 시에도 중복 방지 세션 활용
+            deduplicationService.beginSession();
+            try {
+                int saved = collectAndSaveForKeyword(keyword, allKeywordNames);
+                lastCollectedAt = LocalDateTime.now();
+                log.info("[재수집 완료] 키워드 '{}' {}건 신규 저장. time={}", keyword, saved, now());
+            } finally {
+                deduplicationService.endSession();
+            }
 
         } catch (Exception e) {
             log.error("[재수집 실패] 키워드 '{}': {}", keyword, e.getMessage(), e);
@@ -246,7 +259,7 @@ public class NewsService {
     }
 
     /**
-     * 특정 키워드에 대해 크롤링 → 배치 평가 → 일괄 저장 파이프라인 실행.
+     * 특정 키워드에 대해 크롤링 → 글로벌 중복 필터 → 배치 평가 → 태그 추출 → 일괄 저장 파이프라인 실행.
      * SSE 진행률 이벤트를 각 단계마다 발행한다.
      *
      * @param keywordIndex  현재 키워드 인덱스 (SSE 퍼센티지 계산용)
@@ -260,18 +273,18 @@ public class NewsService {
         int sliceEnd = ((keywordIndex + 1) * 100) / totalKeywords;
         int sliceRange = sliceEnd - sliceStart;
 
-        // Early Exit: CrawledUrl 테이블에서 URL을 사전 로드하여 크롤러에 전달 (본문 크롤링 전 중복 필터)
-        Set<String> knownUrls = new HashSet<>(crawledUrlRepository.findAllUrls());
-        List<RawNewsItem> items = crawlerManager.crawlAll(keyword, knownUrls);
+        // 크롤러에 세션의 known URLs를 전달하여 Early Exit (본문 크롤링 전 필터)
+        List<RawNewsItem> items = crawlerManager.crawlAll(keyword, deduplicationService.getKnownUrls());
 
         notifyProgress(new CollectionProgressEvent(
                 "CRAWL_DONE", keyword,
                 String.format("크롤링 목록 수집 완료. %d건 발견", items.size()),
                 keywordIndex, totalKeywords, sliceStart + sliceRange / 4, items.size()));
 
-        // 1. URL 중복 필터링 (CrawledUrl 기준 — 레이스 컨디션 안전장치)
+        // 글로벌 중복 필터: CrawlDeduplicationService를 통한 원자적 URL 예약
+        // 키워드 A에서 이미 처리 중인 URL은 키워드 B에서 자동 스킵
         List<RawNewsItem> newItems = items.stream()
-                .filter(item -> !crawledUrlRepository.existsByUrl(item.getUrl()))
+                .filter(item -> deduplicationService.tryReserve(item.getUrl()))
                 .collect(Collectors.toList());
 
         notifyProgress(new CollectionProgressEvent(
@@ -292,10 +305,13 @@ public class NewsService {
                 String.format("AI 분석 시작 (%d건)", newItems.size()),
                 keywordIndex, totalKeywords, sliceStart + sliceRange / 2, newItems.size()));
 
-        // 2. 배치 AI 평가 (1회 API 호출로 모든 기사 동시 평가)
+        // 2. 배치 AI 평가 (1회 API 호출로 모든 기사 동시 평가, 재시도 내장)
         List<AiEvaluation> evaluations = openAiService.evaluateImportanceBatch(newItems, allKeywordNames);
 
-        // 3. 평가 결과 + 구조적/메타 점수 계산 → News 엔티티 조립
+        // 3. 태그 추출 (LLM 기반 자동 태그 — 본문에서 3~5개 핵심 태그)
+        List<String> tagsList = tagExtractionService.extractTagsBatch(newItems);
+
+        // 4. 평가 결과 + 구조적/메타 점수 계산 + 태그 → News 엔티티 조립
         List<News> newsToSave = new ArrayList<>();
         for (int i = 0; i < newItems.size(); i++) {
             RawNewsItem item = newItems.get(i);
@@ -319,13 +335,18 @@ public class NewsService {
             news.setSummary(aiEval.summary());
             news.setImportanceScore(finalScore);
 
+            // 자동 추출 태그 설정
+            if (i < tagsList.size()) {
+                news.setTags(tagsList.get(i));
+            }
+
             newsToSave.add(news);
         }
 
-        // 4. 일괄 저장 (Batch Insert)
+        // 5. 일괄 저장 (Batch Insert)
         List<News> savedNewsList = newsRepository.saveAll(newsToSave);
 
-        // 5. CrawledUrl 테이블에 URL 히스토리 저장 (중복 수집 영구 방지)
+        // 6. CrawledUrl 테이블에 URL 히스토리 저장 (중복 수집 영구 방지)
         List<CrawledUrl> crawledUrlsToSave = savedNewsList.stream()
                 .map(News::getUrl)
                 .filter(url -> !crawledUrlRepository.existsByUrl(url))
@@ -335,7 +356,7 @@ public class NewsService {
             crawledUrlRepository.saveAll(crawledUrlsToSave);
         }
 
-        // 6. 벡터 인덱싱
+        // 7. 벡터 인덱싱 (tags 메타데이터 포함)
         for (News savedNews : savedNewsList) {
             newsVectorStoreService.addOrUpdate(savedNews);
         }

@@ -3,15 +3,33 @@ package com.example.news_radar.service;
 import com.example.news_radar.dto.AiEvaluation;
 import com.example.news_radar.dto.RawNewsItem;
 import com.example.news_radar.entity.News;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.*;
 
+/**
+ * OpenAI API 연동 서비스.
+ *
+ * 아키텍처 결정 — Resilience 전략:
+ *   @Retryable을 배치 평가(evaluateImportanceBatch)와 핵심 단건 평가에 적용하여
+ *   OpenAI 429 Rate Limit, 5xx 서버 오류 시 지수 백오프(1s→2s→4s)로 최대 3회 재시도.
+ *
+ *   재시도 대상 예외:
+ *   - WebClientResponseException: HTTP 레벨 오류 (429, 502, 503)
+ *   - RuntimeException: Spring AI가 래핑하는 다양한 일시적 오류
+ *
+ *   @Recover로 최종 실패 시 안전한 기본값을 반환하여 파이프라인이 중단되지 않도록 보장.
+ *   내부 호출(fallbackToIndividual → evaluateImportance)은 AOP 프록시를 거치지 않으므로
+ *   @Retryable이 적용되지 않지만, 내부의 try-catch가 동일한 안전망 역할을 수행함.
+ */
 @Slf4j
 @Service
 public class OpenAiService {
@@ -25,11 +43,13 @@ public class OpenAiService {
 
     /**
      * Connecting the Dots — 주요 뉴스들 사이의 숨겨진 연관성·트렌드 인사이트 생성.
-     * headlines + radarBoard에 속한 뉴스만 전달받아 거시적 흐름을 2~3문단으로 도출합니다.
-     *
-     * @param topNews headlines + radarBoard 뉴스 목록
-     * @return 심층 트렌드 분석 텍스트 (2~3문단)
      */
+    @Retryable(
+            retryFor = { WebClientResponseException.class, RuntimeException.class },
+            noRetryFor = { IllegalArgumentException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 8000)
+    )
     public String generateTrendInsight(List<News> topNews) {
         if (topNews == null || topNews.isEmpty()) {
             return "분석할 뉴스가 없습니다.";
@@ -65,16 +85,17 @@ public class OpenAiService {
                 %s
                 """.formatted(newsBlock.toString());
 
-        try {
-            String content = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            return (content != null && !content.isBlank()) ? content : "트렌드 인사이트 생성에 실패했습니다.";
-        } catch (Exception e) {
-            log.error("[TrendInsight] 생성 실패: {}", e.getMessage(), e);
-            return "트렌드 인사이트 생성 중 오류가 발생했습니다.";
-        }
+        String content = chatClient.prompt()
+                .user(prompt)
+                .call()
+                .content();
+        return (content != null && !content.isBlank()) ? content : "트렌드 인사이트 생성에 실패했습니다.";
+    }
+
+    @Recover
+    public String recoverTrendInsight(Exception e, List<News> topNews) {
+        log.error("[TrendInsight] 최종 실패 (재시도 소진): {}", e.getMessage(), e);
+        return "트렌드 인사이트 생성 중 오류가 발생했습니다.";
     }
 
     // 한 줄 요약 기능 (ai-test 엔드포인트용)
@@ -89,9 +110,14 @@ public class OpenAiService {
 
     /**
      * 검색어 확장 (Query Expansion).
-     * 사용자가 등록한 단일 키워드를 LLM에게 보내, 문맥 기반의 연관 검색어 3개를 반환받습니다.
-     * 예: "AI" → ["AI 에이전트 최신 동향", "자율 AI 기술", "LLM 활용 사례"]
+     * 실패 시 빈 리스트 반환 (원본 키워드만 사용).
      */
+    @Retryable(
+            retryFor = { WebClientResponseException.class, RuntimeException.class },
+            noRetryFor = { IllegalArgumentException.class },
+            maxAttempts = 2,
+            backoff = @Backoff(delay = 500, multiplier = 2.0)
+    )
     public List<String> expandKeyword(String keyword) {
         String prompt = """
                 너는 IT/기술 뉴스 검색 전문가야.
@@ -105,31 +131,41 @@ public class OpenAiService {
 
                 키워드: %s
                 """.formatted(keyword);
-        try {
-            String response = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            if (response == null || response.isBlank()) {
-                log.warn("[QueryExpansion] 확장 실패 (빈 응답), 원본 키워드만 사용: {}", keyword);
-                return List.of();
-            }
-            List<String> expanded = Arrays.stream(response.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toList();
-            log.info("[QueryExpansion] '{}' → {}", keyword, expanded);
-            return expanded;
-        } catch (Exception e) {
-            log.error("[QueryExpansion] 확장 실패: keyword={}, error={}", keyword, e.getMessage(), e);
+
+        String response = chatClient.prompt()
+                .user(prompt)
+                .call()
+                .content();
+        if (response == null || response.isBlank()) {
+            log.warn("[QueryExpansion] 확장 실패 (빈 응답), 원본 키워드만 사용: {}", keyword);
             return List.of();
         }
+        List<String> expanded = Arrays.stream(response.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        log.info("[QueryExpansion] '{}' → {}", keyword, expanded);
+        return expanded;
+    }
+
+    @Recover
+    public List<String> recoverExpandKeyword(Exception e, String keyword) {
+        log.error("[QueryExpansion] 최종 실패 (재시도 소진): keyword={}, error={}", keyword, e.getMessage());
+        return List.of();
     }
 
     /**
-     * AI 중요도 평가 (단건) — 3가지 기준(파급력/혁신성/시의성)으로 평가한 결과를 JSON으로 반환.
-     * 배치 평가 실패 시 fallback으로도 사용됩니다.
+     * AI 중요도 평가 (단건).
+     *
+     * @Retryable: 429/5xx 오류 시 지수 백오프 1s→2s→4s, 최대 3회 재시도.
+     * @Recover: 최종 실패 시 보수적 기본 점수 반환 (파이프라인 중단 방지).
      */
+    @Retryable(
+            retryFor = { WebClientResponseException.class, RuntimeException.class },
+            noRetryFor = { IllegalArgumentException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 8000)
+    )
     public AiEvaluation evaluateImportance(String title, String content, List<String> keywords) {
         String trimmedContent = (content != null && content.length() > 1500)
                 ? content.substring(0, 1500) : (content != null ? content : "");
@@ -156,36 +192,41 @@ public class OpenAiService {
                 [응답 형식]
                 {"impact": 0~20 사이 정수, "innovation": 0~15 사이 정수, "timeliness": 0~15 사이 정수, "reason": "이 뉴스가 중요한 이유 1~2문장", "category": "주요 기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
                 """.formatted(title, trimmedContent, String.join(", ", keywords));
-        try {
-            AiEvaluation raw = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .entity(AiEvaluation.class);
 
-            if (raw == null) {
-                return new AiEvaluation(10, 7, 8, "분석 실패", "기타", "응답이 비어있습니다.");
-            }
+        AiEvaluation raw = chatClient.prompt()
+                .user(prompt)
+                .call()
+                .entity(AiEvaluation.class);
 
-            return sanitize(raw);
-        } catch (Exception e) {
-            log.error("AI 중요도 평가 실패: {}", e.getMessage(), e);
-            return new AiEvaluation(10, 7, 8, "분석 실패: " + e.getMessage(), "기타", "요약 생성 실패");
+        if (raw == null) {
+            return new AiEvaluation(10, 7, 8, "분석 실패", "기타", "응답이 비어있습니다.");
         }
+
+        return sanitize(raw);
     }
 
     /**
-     * AI 중요도 배치 평가 — 여러 기사를 한 번의 API 호출로 동시에 평가합니다.
-     *
-     * 프롬프트에 각 기사를 articleIndex(0-based)와 함께 전달하고,
-     * 응답 JSON 배열의 각 객체에도 "articleIndex" 필드를 포함하도록 지시합니다.
-     * 이를 기준으로 기사와 평가 결과를 정확하게 매핑합니다.
-     *
-     * 배치 평가 실패 시, 개별 evaluateImportance()로 자동 fallback합니다.
-     *
-     * @param items 평가할 기사 리스트
-     * @param keywords 전체 활성 키워드 리스트 (평가 컨텍스트용)
-     * @return items와 동일한 크기/순서의 AiEvaluation 리스트
+     * evaluateImportance 최종 실패 시 fallback.
+     * 보수적 중간 점수를 반환하여 파이프라인이 계속 진행되도록 함.
      */
+    @Recover
+    public AiEvaluation recoverEvaluateImportance(Exception e, String title, String content, List<String> keywords) {
+        log.error("[AI평가] 최종 실패 (재시도 소진): title='{}', error={}", title, e.getMessage());
+        return new AiEvaluation(10, 7, 8, "분석 실패: " + e.getMessage(), "기타", "요약 생성 실패");
+    }
+
+    /**
+     * AI 중요도 배치 평가.
+     *
+     * @Retryable: 배치 전체에 대해 재시도. 429/5xx 시 지수 백오프 적용.
+     * @Recover: 최종 실패 시 개별 평가 fallback으로 전환.
+     */
+    @Retryable(
+            retryFor = { WebClientResponseException.class, RuntimeException.class },
+            noRetryFor = { IllegalArgumentException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 16000)
+    )
     public List<AiEvaluation> evaluateImportanceBatch(List<RawNewsItem> items, List<String> keywords) {
         if (items == null || items.isEmpty()) {
             return List.of();
@@ -194,30 +235,49 @@ public class OpenAiService {
         // 단건이면 기존 단건 평가 사용
         if (items.size() == 1) {
             RawNewsItem item = items.get(0);
-            return List.of(evaluateImportance(item.getTitle(), item.getContent(), keywords));
+            return List.of(evaluateImportanceSafe(item.getTitle(), item.getContent(), keywords));
         }
 
-        try {
-            String prompt = buildBatchPrompt(items, keywords);
-            String rawResponse = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+        String prompt = buildBatchPrompt(items, keywords);
+        String rawResponse = chatClient.prompt()
+                .user(prompt)
+                .call()
+                .content();
 
-            if (rawResponse == null || rawResponse.isBlank()) {
-                log.warn("[BatchEval] 빈 응답, 개별 평가로 fallback ({}건)", items.size());
-                return fallbackToIndividual(items, keywords);
-            }
-
-            return parseBatchResponse(rawResponse, items, keywords);
-
-        } catch (Exception e) {
-            log.error("[BatchEval] 배치 평가 실패, 개별 평가로 fallback: {}", e.getMessage(), e);
+        if (rawResponse == null || rawResponse.isBlank()) {
+            log.warn("[BatchEval] 빈 응답, 개별 평가로 fallback ({}건)", items.size());
             return fallbackToIndividual(items, keywords);
         }
+
+        return parseBatchResponse(rawResponse, items, keywords);
+    }
+
+    /**
+     * evaluateImportanceBatch 최종 실패 시 fallback.
+     * 개별 평가로 전환하여 부분적으로라도 결과를 확보함.
+     */
+    @Recover
+    public List<AiEvaluation> recoverEvaluateImportanceBatch(
+            Exception e, List<RawNewsItem> items, List<String> keywords) {
+        log.error("[BatchEval] 최종 실패 (재시도 소진), 개별 평가로 fallback: {}", e.getMessage());
+        return fallbackToIndividual(items, keywords);
     }
 
     // ==================== 배치 평가 내부 헬퍼 ====================
+
+    /**
+     * 내부 호출용 단건 평가 (try-catch 포함).
+     * AOP 프록시를 거치지 않는 내부 호출이므로 @Retryable 미적용.
+     * 대신 자체 try-catch로 안전하게 처리.
+     */
+    private AiEvaluation evaluateImportanceSafe(String title, String content, List<String> keywords) {
+        try {
+            return evaluateImportance(title, content, keywords);
+        } catch (Exception e) {
+            log.error("AI 중요도 평가 실패 (내부 호출): {}", e.getMessage(), e);
+            return new AiEvaluation(10, 7, 8, "분석 실패: " + e.getMessage(), "기타", "요약 생성 실패");
+        }
+    }
 
     private String buildBatchPrompt(List<RawNewsItem> items, List<String> keywords) {
         StringBuilder articlesBlock = new StringBuilder();
@@ -262,14 +322,9 @@ public class OpenAiService {
         );
     }
 
-    /**
-     * 배치 응답 JSON 파싱.
-     * articleIndex 기준으로 매핑하여, 누락된 기사는 개별 fallback 처리합니다.
-     */
     private List<AiEvaluation> parseBatchResponse(
             String rawResponse, List<RawNewsItem> items, List<String> keywords) {
 
-        // JSON 배열 추출 (응답에 ```json 등의 마크다운이 섞여 있을 수 있음)
         String jsonStr = extractJsonArray(rawResponse);
 
         try {
@@ -279,7 +334,6 @@ public class OpenAiService {
                 return fallbackToIndividual(items, keywords);
             }
 
-            // articleIndex → AiEvaluation 매핑
             Map<Integer, AiEvaluation> evalMap = new HashMap<>();
             for (JsonNode node : arrayNode) {
                 try {
@@ -299,7 +353,6 @@ public class OpenAiService {
                 }
             }
 
-            // items 순서대로 결과 조립 (누락된 항목은 개별 fallback)
             List<AiEvaluation> results = new ArrayList<>();
             for (int i = 0; i < items.size(); i++) {
                 AiEvaluation eval = evalMap.get(i);
@@ -308,7 +361,7 @@ public class OpenAiService {
                 } else {
                     log.warn("[BatchEval] articleIndex={} 누락, 개별 평가로 보충", i);
                     RawNewsItem item = items.get(i);
-                    results.add(evaluateImportance(item.getTitle(), item.getContent(), keywords));
+                    results.add(evaluateImportanceSafe(item.getTitle(), item.getContent(), keywords));
                 }
             }
 
@@ -322,7 +375,6 @@ public class OpenAiService {
         }
     }
 
-    /** 응답 문자열에서 JSON 배열 부분만 추출 */
     private String extractJsonArray(String raw) {
         int start = raw.indexOf('[');
         int end = raw.lastIndexOf(']');
@@ -332,16 +384,14 @@ public class OpenAiService {
         return raw;
     }
 
-    /** 개별 평가 fallback */
     private List<AiEvaluation> fallbackToIndividual(List<RawNewsItem> items, List<String> keywords) {
         List<AiEvaluation> results = new ArrayList<>();
         for (RawNewsItem item : items) {
-            results.add(evaluateImportance(item.getTitle(), item.getContent(), keywords));
+            results.add(evaluateImportanceSafe(item.getTitle(), item.getContent(), keywords));
         }
         return results;
     }
 
-    /** AiEvaluation 필드 값 정규화 */
     private AiEvaluation sanitize(AiEvaluation raw) {
         int impact     = Math.max(0, Math.min(20, raw.impact()));
         int innovation = Math.max(0, Math.min(15, raw.innovation()));

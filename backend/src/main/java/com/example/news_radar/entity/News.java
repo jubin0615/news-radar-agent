@@ -63,6 +63,10 @@ public class News {
     // 기사 발행일
     private String published;
 
+    // LLM이 추출한 핵심 태그 (콤마 구분, 예: "GPT-4o,RAG,LLM 경쟁")
+    @Column(length = 500)
+    private String tags;
+
     // 소프트 삭제 여부: true = 활성(기본), false = 보관/비활성
     @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean isActive = true;
