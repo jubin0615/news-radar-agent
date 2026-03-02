@@ -2,6 +2,8 @@ package com.example.news_radar.crawler;
 
 import com.example.news_radar.dto.RawNewsItem;
 
+import com.example.news_radar.service.KeywordService;
+
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -32,6 +35,12 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 public class NaverNewsCrawler implements NewsCrawler {
+
+    private final KeywordService keywordService;
+
+    public NaverNewsCrawler(KeywordService keywordService) {
+        this.keywordService = keywordService;
+    }
 
     @Value("${app.crawler.max-items-per-keyword:10}")
     private int maxItemsPerKeyword;
@@ -125,7 +134,16 @@ public class NaverNewsCrawler implements NewsCrawler {
      * - maxItemsPerKeyword 초과 시에도 중단 (비용 안전장치)
      */
     private List<TitleAndLink> extractTitleAndLinks(String keyword, LocalDateTime lastCollectedAt) throws IOException {
-        String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
+        // 하이브리드 동의어 조회: 정적 사전 → DB 캐시 → LLM 순 Fallback
+        List<String> variants = keywordService.getSearchVariants(keyword);
+        String expandedQuery = variants.stream()
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.joining(" | "));
+
+        log.info("[네이버] keyword={}, expandedQuery={}", keyword, expandedQuery);
+
+        String encodedKeyword = URLEncoder.encode(expandedQuery, StandardCharsets.UTF_8);
         String searchUrl = "https://search.naver.com/search.naver?where=news&query="
                 + encodedKeyword + "&sort=1";
 

@@ -155,6 +155,55 @@ public class OpenAiService {
     }
 
     /**
+     * 키워드의 검색용 동의어를 LLM으로 생성한다.
+     * 한글/영문/약자/띄어쓰기 변형 등 네이버 뉴스 검색에 유용한 변형어 3~5개를 반환.
+     * 실패 시 빈 리스트를 반환하여 파이프라인을 중단시키지 않는다.
+     */
+    @Retryable(
+            retryFor = { WebClientResponseException.class, RuntimeException.class },
+            noRetryFor = { IllegalArgumentException.class },
+            maxAttempts = 2,
+            backoff = @Backoff(delay = 500, multiplier = 2.0)
+    )
+    public List<String> generateSynonyms(String keyword) {
+        String prompt = """
+                너는 한국어 뉴스 검색 최적화 전문가야.
+                아래 키워드로 네이버 뉴스를 검색할 때, 누락 없이 기사를 찾기 위해
+                사용할 수 있는 동의어/변형어를 3~5개 만들어줘.
+
+                규칙:
+                - 한글 표기, 영문 표기, 약자, 띄어쓰기 변형 등을 포함해.
+                - 원본 키워드 자체는 포함하지 마.
+                - 콤마(,)로 구분된 단어만 출력해. 다른 텍스트는 절대 포함하지 마.
+
+                키워드: %s
+                """.formatted(keyword);
+
+        String response = chatClient.prompt()
+                .user(prompt)
+                .call()
+                .content();
+
+        if (response == null || response.isBlank()) {
+            log.warn("[SynonymGen] 동의어 생성 실패 (빈 응답): keyword={}", keyword);
+            return List.of();
+        }
+
+        List<String> synonyms = Arrays.stream(response.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        log.info("[SynonymGen] '{}' → {}", keyword, synonyms);
+        return synonyms;
+    }
+
+    @Recover
+    public List<String> recoverGenerateSynonyms(Exception e, String keyword) {
+        log.error("[SynonymGen] 최종 실패 (재시도 소진): keyword={}, error={}", keyword, e.getMessage());
+        return List.of();
+    }
+
+    /**
      * AI 중요도 평가 (단건).
      *
      * @Retryable: 429/5xx 오류 시 지수 백오프 1s→2s→4s, 최대 3회 재시도.

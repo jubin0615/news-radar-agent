@@ -2,13 +2,16 @@ package com.example.news_radar.service;
 
 import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.entity.KeywordStatus;
+import com.example.news_radar.entity.KeywordSynonym;
 import com.example.news_radar.repository.KeywordRepository;
+import com.example.news_radar.repository.KeywordSynonymRepository;
 import com.example.news_radar.repository.NewsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -19,8 +22,11 @@ import java.util.concurrent.CompletableFuture;
 public class KeywordService {
 
     private final KeywordRepository keywordRepository;
+    private final KeywordSynonymRepository keywordSynonymRepository;
     private final NewsRepository newsRepository;
     private final NewsVectorStoreService newsVectorStoreService;
+    private final KeywordSynonymRegistry synonymRegistry;
+    private final OpenAiService openAiService;
 
     // 전체 키워드 조회
     @Transactional(readOnly=true)
@@ -114,9 +120,56 @@ public class KeywordService {
         });
     }
 
+    /**
+     * 하이브리드 동의어 조회 (3단계 Fallback).
+     *
+     * 1단계: 정적 사전(KeywordSynonymRegistry) — 하드코딩된 동의어가 있으면 즉시 반환
+     * 2단계: DB 캐시(KeywordSynonym 테이블) — 이전에 LLM으로 생성·캐싱된 동의어 반환
+     * 3단계: LLM 호출(OpenAiService) — 신규 키워드에 대해 동의어 생성 후 DB 캐싱
+     *
+     * @param canonical 대표 키워드 (정규화 완료 상태)
+     * @return 대표 키워드를 포함한 검색 변형어 리스트
+     */
+    @Transactional
+    public List<String> getSearchVariants(String canonical) {
+        // 1단계: 정적 사전 조회
+        List<String> staticVariants = synonymRegistry.getSearchVariants(canonical);
+        if (staticVariants.size() > 1) {
+            log.debug("[동의어] 정적 사전 히트: keyword={}, variants={}", canonical, staticVariants);
+            return staticVariants;
+        }
+
+        // 2단계: DB 캐시 조회
+        Optional<Keyword> keywordOpt = keywordRepository.findByNameIgnoreCase(canonical);
+        if (keywordOpt.isPresent()) {
+            List<KeywordSynonym> cached = keywordSynonymRepository.findByKeyword(keywordOpt.get());
+            if (!cached.isEmpty()) {
+                List<String> variants = new ArrayList<>();
+                variants.add(canonical);
+                cached.forEach(s -> variants.add(s.getSynonym()));
+                log.debug("[동의어] DB 캐시 히트: keyword={}, variants={}", canonical, variants);
+                return variants;
+            }
+        }
+
+        // 3단계: LLM 호출 → DB 캐싱
+        List<String> generated = openAiService.generateSynonyms(canonical);
+        if (!generated.isEmpty() && keywordOpt.isPresent()) {
+            Keyword keyword = keywordOpt.get();
+            for (String syn : generated) {
+                keywordSynonymRepository.save(new KeywordSynonym(keyword, syn));
+            }
+            log.info("[동의어] LLM 생성 및 DB 캐싱 완료: keyword={}, synonyms={}", canonical, generated);
+        }
+
+        List<String> variants = new ArrayList<>();
+        variants.add(canonical);
+        variants.addAll(generated);
+        return variants;
+    }
+
     private String normalize(String name) {
-        if (name == null) return "";
-        return name.trim().toLowerCase();
+        return synonymRegistry.toCanonical(name);
     }
 
     /**
