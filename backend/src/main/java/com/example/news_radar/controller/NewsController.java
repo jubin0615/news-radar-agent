@@ -11,6 +11,7 @@ import com.example.news_radar.service.NewsTrendService;
 import com.example.news_radar.service.OpenAiService;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -68,6 +69,18 @@ public class NewsController {
     @GetMapping("/top")
     public List<NewsResponse> getTopNews(@RequestParam(defaultValue = "60") int minScore) {
         return newsRepository.findByMinScore(minScore).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    // 최근 48시간 브리핑용 뉴스 조회 (중요도 순 → 최신순)
+    @GetMapping("/briefing")
+    public List<NewsResponse> getBriefingNews(
+            @RequestParam(defaultValue = "48") int hours,
+            @RequestParam(defaultValue = "5") int limit) {
+        LocalDateTime since = LocalDateTime.now().minusHours(hours);
+        return newsRepository.findRecentBriefingNews(since).stream()
+                .limit(limit)
                 .map(this::toResponse)
                 .toList();
     }

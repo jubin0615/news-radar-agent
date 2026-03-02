@@ -84,6 +84,12 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "ORDER BY n.timelinessScore DESC NULLS LAST, n.importanceScore DESC")
     List<News> findTrendNews(int minImportanceScore, Pageable pageable);
 
+    // 최근 N시간 이내 브리핑용: 중요도 순 → 최신순 정렬 (활성만)
+    @Query("SELECT n FROM News n WHERE n.isActive = true " +
+           "AND n.collectedAt >= :since " +
+           "ORDER BY n.importanceScore DESC NULLS LAST, n.collectedAt DESC")
+    List<News> findRecentBriefingNews(LocalDateTime since);
+
     // 오래된 뉴스 하드 삭제 — 스케줄러에서 DB 정리용
     @Modifying
     @Transactional

@@ -80,12 +80,18 @@ public class NewsVectorStoreService {
         this.tokenTextSplitter = new TokenTextSplitter(800, 350, 5, 10000, true);
     }
 
-    // 서버 기동 시 최초 재빌드
+    // 서버 기동 시 최초 재빌드 — 비동기로 실행하여 서버 시작을 블로킹하지 않음
     @PostConstruct
     public void initVectorStore() {
-        log.info("[RAG] 서버 기동: 벡터 스토어 초기화 시작 (type={}, 활성 키워드 + 최근 {}일 기준)",
+        log.info("[RAG] 서버 기동: 벡터 스토어 백그라운드 초기화 예약 (type={}, 활성 키워드 + 최근 {}일 기준)",
                 vectorStore.getClass().getSimpleName(), VECTOR_STORE_DAYS);
-        rebuildForActiveKeywords();
+        Thread.ofVirtual().name("vector-store-init").start(() -> {
+            try {
+                rebuildForActiveKeywords();
+            } catch (Exception e) {
+                log.error("[RAG] 벡터 스토어 초기화 실패: {}", e.getMessage(), e);
+            }
+        });
     }
 
     // 매일 새벽 3시 자동 클렌징 (오래된 기사 제거 + 최신 유지)
