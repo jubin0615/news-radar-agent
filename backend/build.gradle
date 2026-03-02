@@ -44,11 +44,11 @@ dependencies {
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'org.springframework.ai:spring-ai-vector-store'
 
-	// [프로덕션] PgVector — PostgreSQL 기반 벡터 스토어 (프로필: pgvector)
+	// PgVector — PostgreSQL 기반 벡터 스토어 (프로필: pgvector)
 	implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
 	runtimeOnly 'org.postgresql:postgresql'
 
-	// [프로덕션] Spring Retry — LLM API 장애 격리 및 지수 백오프 재시도
+	// Spring Retry — LLM API 장애 격리 및 지수 백오프 재시도
 	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.springframework.boot:spring-boot-starter-aop'
 }

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -25,12 +26,17 @@ public class CrawlerManager {
 
     // 키워드로 모든 크롤러 실행 → URL 기준 중복 제거 (하위 호환용)
     public List<RawNewsItem> crawlAll(String keyword) {
-        return crawlAll(keyword, Collections.emptySet());
+        return crawlAll(keyword, Collections.emptySet(), null);
+    }
+
+    // 하위 호환용 오버로드
+    public List<RawNewsItem> crawlAll(String keyword, Set<String> knownUrls) {
+        return crawlAll(keyword, knownUrls, null);
     }
 
     // 키워드로 모든 크롤러 실행 → DB 기존 URL + 크로스-쿼리 중복 제거
     // Query Expansion: 원본 키워드 + LLM 확장 검색어를 모두 순회하며 크롤링
-    public List<RawNewsItem> crawlAll(String keyword, Set<String> knownUrls) {
+    public List<RawNewsItem> crawlAll(String keyword, Set<String> knownUrls, LocalDateTime lastCollectedAt) {
         List<RawNewsItem> allResults = new ArrayList<>();
         Set<String> seenUrls = new HashSet<>(knownUrls); // DB URL로 사전 초기화
 
@@ -44,12 +50,12 @@ public class CrawlerManager {
             log.warn("[CrawlerManager] 검색어 확장 실패, 원본만 사용: keyword={}, error={}", keyword, e.getMessage());
         }
 
-        log.info("[CrawlerManager] 크롤링 시작: 원본='{}', 전체 검색어={}, 기존 URL {}건 사전 필터",
-                keyword, searchQueries, knownUrls.size());
+        log.info("[CrawlerManager] 크롤링 시작: 원본='{}', 전체 검색어={}, 기존 URL {}건 사전 필터, lastCollectedAt={}",
+                keyword, searchQueries, knownUrls.size(), lastCollectedAt);
 
         for (String query : searchQueries) {
             for (NewsCrawler crawler : crawlers) {
-                List<RawNewsItem> items = crawler.crawl(query, knownUrls);
+                List<RawNewsItem> items = crawler.crawl(query, knownUrls, lastCollectedAt);
 
                 for (RawNewsItem item : items) {
                     // URL 기준으로 중복 뉴스 제거 (크로스-쿼리 + DB 중복 모두 포함)

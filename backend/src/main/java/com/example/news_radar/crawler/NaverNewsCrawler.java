@@ -8,12 +8,14 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -26,12 +28,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// 네이버 뉴스 검색 크롤러 (키워드 기반)
+// 네이버 뉴스 검색 크롤러 (키워드 기반, 시간 기반 수집 + Safety Cap)
 @Slf4j
 @Component
 public class NaverNewsCrawler implements NewsCrawler {
 
-    private static final int MAX_ITEMS_PER_KEYWORD = 8;
+    @Value("${app.crawler.max-items-per-keyword:10}")
+    private int maxItemsPerKeyword;
+
     private static final int CONTENT_FETCH_POOL_SIZE = 4;
     private static final int CONTENT_FETCH_TIMEOUT_SECONDS = 30;
     private static final int STAGGER_DELAY_MS = 200;
@@ -39,6 +43,11 @@ public class NaverNewsCrawler implements NewsCrawler {
     private static final Pattern SEARCH_BASIC_TITLE_PATTERN = Pattern.compile(
             "\"title\":\"((?:\\\\\"|[^\"])*)\",\"titleHref\":\"((?:\\\\\"|[^\"])*)\",\"type\":\"searchBasic\"");
     private static final Pattern UNICODE_ESCAPE_PATTERN = Pattern.compile("\\\\u([0-9a-fA-F]{4})");
+
+    // 네이버 검색 결과의 상대 시간 패턴 ("N분 전", "N시간 전", "N일 전")
+    private static final Pattern RELATIVE_TIME_PATTERN = Pattern.compile("(\\d+)(분|시간|일)\\s*전");
+    // 절대 날짜 패턴 ("2026.03.02.")
+    private static final Pattern ABSOLUTE_DATE_PATTERN = Pattern.compile("(\\d{4})\\.(\\d{2})\\.(\\d{2})\\.");
 
     private static final String[] USER_AGENTS = {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -69,14 +78,14 @@ public class NaverNewsCrawler implements NewsCrawler {
 
     @Override
     public List<RawNewsItem> crawl(String keyword) {
-        return crawl(keyword, Set.of());
+        return crawl(keyword, Set.of(), null);
     }
 
     @Override
-    public List<RawNewsItem> crawl(String keyword, Set<String> knownUrls) {
+    public List<RawNewsItem> crawl(String keyword, Set<String> knownUrls, LocalDateTime lastCollectedAt) {
         try {
-            // 1단계: 제목+링크만 수집 (본문 크롤링 없이)
-            List<TitleAndLink> titleAndLinks = extractTitleAndLinks(keyword);
+            // 1단계: 제목+링크+발행시각 수집 (시간 기반 중단 + Safety Cap 적용)
+            List<TitleAndLink> titleAndLinks = extractTitleAndLinks(keyword, lastCollectedAt);
 
             if (titleAndLinks.isEmpty()) {
                 return List.of();
@@ -111,9 +120,11 @@ public class NaverNewsCrawler implements NewsCrawler {
     }
 
     /**
-     * 1단계: 네이버 검색 결과에서 제목+링크만 추출 (본문 크롤링 없이)
+     * 1단계: 네이버 검색 결과에서 제목+링크 추출 (시간 기반 중단 + Safety Cap)
+     * - lastCollectedAt 이전 기사를 만나면 즉시 중단 (최신순 정렬 가정)
+     * - maxItemsPerKeyword 초과 시에도 중단 (비용 안전장치)
      */
-    private List<TitleAndLink> extractTitleAndLinks(String keyword) throws IOException {
+    private List<TitleAndLink> extractTitleAndLinks(String keyword, LocalDateTime lastCollectedAt) throws IOException {
         String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
         String searchUrl = "https://search.naver.com/search.naver?where=news&query="
                 + encodedKeyword + "&sort=1";
@@ -129,23 +140,109 @@ public class NaverNewsCrawler implements NewsCrawler {
                 .get();
 
         List<TitleAndLink> titleAndLinks = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
 
+        // Legacy selector 경로: .news_tit 기반 파싱
         Elements newsItems = doc.select(".news_tit");
         if (!newsItems.isEmpty()) {
             log.info("[네이버] keyword={}, legacy selector hit {}건", keyword, newsItems.size());
-            int limit = Math.min(newsItems.size(), MAX_ITEMS_PER_KEYWORD);
-            for (int i = 0; i < limit; i++) {
-                Element item = newsItems.get(i);
+            for (Element item : newsItems) {
+                // Safety Cap: 최대 수집 개수 초과 시 중단
+                if (titleAndLinks.size() >= maxItemsPerKeyword) {
+                    log.info("[네이버] keyword={}, Safety Cap 도달 ({}건) → 수집 중단",
+                            keyword, maxItemsPerKeyword);
+                    break;
+                }
+
                 String title = item.text();
                 String link = item.attr("href");
+
+                // 시간 기반 중단: 기사의 발행 시각 추출 후 비교
+                LocalDateTime publishedAt = extractDateFromLegacyItem(item, now);
+                if (shouldStopByTime(publishedAt, lastCollectedAt, keyword)) {
+                    break;
+                }
+
                 addTitleAndLink(titleAndLinks, title, link);
             }
         } else {
+            // Embedded payload fallback 경로
             int extracted = extractFromEmbeddedPayload(doc.html(), titleAndLinks);
             log.info("[네이버] keyword={}, payload fallback hit {}건", keyword, extracted);
         }
 
         return titleAndLinks;
+    }
+
+    /**
+     * Legacy selector 기사 항목에서 발행 시각을 추출한다.
+     * 네이버 검색 결과 구조: .news_tit의 부모 .news_area 내 .info 요소에 시간 표시.
+     * "N분 전", "N시간 전", "N일 전" (상대) 또는 "2026.03.02." (절대) 형식.
+     */
+    private LocalDateTime extractDateFromLegacyItem(Element newsTitElement, LocalDateTime now) {
+        // .news_tit → 상위 .news_area 또는 가장 가까운 공통 컨테이너에서 .info 탐색
+        Element container = newsTitElement.closest(".news_area");
+        if (container == null) {
+            container = newsTitElement.parent();
+        }
+        if (container == null) return null;
+
+        Elements infoElements = container.select("span.info");
+        for (Element info : infoElements) {
+            LocalDateTime parsed = parseNaverDateText(info.text().trim(), now);
+            if (parsed != null) return parsed;
+        }
+        return null;
+    }
+
+    /**
+     * 네이버 검색 결과의 시간 텍스트를 LocalDateTime으로 변환한다.
+     * 지원 형식:
+     *  - 상대: "N분 전", "N시간 전", "N일 전"
+     *  - 절대: "2026.03.02."
+     */
+    private LocalDateTime parseNaverDateText(String text, LocalDateTime now) {
+        if (text == null || text.isBlank()) return null;
+
+        // 상대 시간 ("3분 전", "2시간 전", "1일 전")
+        Matcher relativeMatcher = RELATIVE_TIME_PATTERN.matcher(text);
+        if (relativeMatcher.find()) {
+            int amount = Integer.parseInt(relativeMatcher.group(1));
+            String unit = relativeMatcher.group(2);
+            return switch (unit) {
+                case "분" -> now.minusMinutes(amount);
+                case "시간" -> now.minusHours(amount);
+                case "일" -> now.minusDays(amount);
+                default -> null;
+            };
+        }
+
+        // 절대 날짜 ("2026.03.02.")
+        Matcher absoluteMatcher = ABSOLUTE_DATE_PATTERN.matcher(text);
+        if (absoluteMatcher.find()) {
+            int year = Integer.parseInt(absoluteMatcher.group(1));
+            int month = Integer.parseInt(absoluteMatcher.group(2));
+            int day = Integer.parseInt(absoluteMatcher.group(3));
+            return LocalDateTime.of(year, month, day, 0, 0);
+        }
+
+        return null;
+    }
+
+    /**
+     * 시간 기반 중단 판정.
+     * 기사 발행 시각이 마지막 수집 시각보다 이전이면 true를 반환하여 수집을 중단시킨다.
+     * (검색 결과가 최신순으로 정렬되어 있으므로, 이후 기사도 모두 이전일 것)
+     */
+    private boolean shouldStopByTime(LocalDateTime publishedAt, LocalDateTime lastCollectedAt, String keyword) {
+        if (lastCollectedAt == null || publishedAt == null) return false;
+
+        if (publishedAt.isBefore(lastCollectedAt)) {
+            log.info("[네이버] keyword={}, 기사 시각({})이 마지막 수집({}) 이전 → 시간 기반 중단",
+                    keyword, publishedAt, lastCollectedAt);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -216,7 +313,7 @@ public class NaverNewsCrawler implements NewsCrawler {
     private int extractFromEmbeddedPayload(String html, List<TitleAndLink> results) {
         int count = 0;
         Matcher matcher = SEARCH_BASIC_TITLE_PATTERN.matcher(html);
-        while (matcher.find() && results.size() < MAX_ITEMS_PER_KEYWORD) {
+        while (matcher.find() && results.size() < maxItemsPerKeyword) {
             String title = decodeEscapes(matcher.group(1));
             String link = decodeEscapes(matcher.group(2));
 

@@ -2,6 +2,7 @@ package com.example.news_radar.crawler;
 
 import com.example.news_radar.dto.RawNewsItem;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -13,6 +14,11 @@ public interface NewsCrawler {
 
     // Early Exit: 이미 수집된 URL 집합을 전달받아 본문 크롤링을 건너뛰는 오버로드
     default List<RawNewsItem> crawl(String keyword, Set<String> knownUrls) {
+        return crawl(keyword, knownUrls, null);
+    }
+
+    // 시간 기반 수집: lastCollectedAt 이후 기사만 수집, 이전 기사를 만나면 중단
+    default List<RawNewsItem> crawl(String keyword, Set<String> knownUrls, LocalDateTime lastCollectedAt) {
         return crawl(keyword);
     }
 }

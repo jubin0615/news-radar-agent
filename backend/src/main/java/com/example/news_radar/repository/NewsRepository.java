@@ -68,6 +68,9 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     // 가장 최근 수집된 활성 뉴스 (마지막 수집 시각 조회용)
     Optional<News> findTopByIsActiveTrueOrderByCollectedAtDesc();
 
+    // 특정 키워드의 가장 최근 수집된 활성 뉴스 (시간 기반 크롤링용)
+    Optional<News> findTopByKeywordAndIsActiveTrueOrderByCollectedAtDesc(String keyword);
+
     // Vector Store 재빌드용: 특정 키워드 목록 + 최소 점수 + 기간 필터
     @Query("SELECT n FROM News n WHERE n.isActive = true " +
            "AND n.keyword IN :keywords " +

@@ -273,8 +273,15 @@ public class NewsService {
         int sliceEnd = ((keywordIndex + 1) * 100) / totalKeywords;
         int sliceRange = sliceEnd - sliceStart;
 
-        // 크롤러에 세션의 known URLs를 전달하여 Early Exit (본문 크롤링 전 필터)
-        List<RawNewsItem> items = crawlerManager.crawlAll(keyword, deduplicationService.getKnownUrls());
+        // 키워드별 마지막 수집 시각 조회 (시간 기반 크롤링 중단 기준)
+        LocalDateTime keywordLastCollectedAt = newsRepository
+                .findTopByKeywordAndIsActiveTrueOrderByCollectedAtDesc(keyword)
+                .map(News::getCollectedAt)
+                .orElse(null);
+
+        // 크롤러에 세션의 known URLs + 마지막 수집 시각을 전달
+        List<RawNewsItem> items = crawlerManager.crawlAll(
+                keyword, deduplicationService.getKnownUrls(), keywordLastCollectedAt);
 
         notifyProgress(new CollectionProgressEvent(
                 "CRAWL_DONE", keyword,
