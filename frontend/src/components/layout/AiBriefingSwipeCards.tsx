@@ -8,7 +8,7 @@ import {
   AnimatePresence,
   type PanInfo,
 } from "framer-motion";
-import { Brain, Newspaper, Tag, Sparkles, ChevronLeft, ChevronRight, MousePointerClick } from "lucide-react";
+import { Brain, Newspaper, Tag, Sparkles, ChevronLeft, ChevronRight, MousePointerClick, Radar } from "lucide-react";
 import type { NewsItem, NewsGrade } from "@/types";
 
 // ── Grade config ─────────────────────────────────────────────── //
@@ -283,15 +283,12 @@ export default function AiBriefingSwipeCards({
   const fetchCards = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
     try {
-      const res = await fetch("/api/news", { cache: "no-store" });
+      const res = await fetch("/api/news/briefing?hours=48&limit=5", { cache: "no-store" });
       if (!res.ok) return;
 
       const data: NewsItem[] = await res.json();
-      // Top 5 by importance score
-      const top5 = data
-        .filter((n) => n.importanceScore != null)
-        .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
-        .slice(0, 5);
+      // Backend already filters 48h + sorts by importance → collectedAt
+      const top5 = data.filter((n) => n.importanceScore != null);
 
       // 카드 구성이 달라졌으면 처음부터 보여주기
       const newIds = top5.map((n) => n.id).join(",");
@@ -397,14 +394,55 @@ export default function AiBriefingSwipeCards({
   if (cards.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Sparkles size={28} style={{ color: "var(--text-muted)" }} />
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            AI 브리핑을 생성할 뉴스가 없습니다
-          </p>
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            뉴스를 수집하면 핵심 기사가 여기에 표시됩니다
-          </p>
+        <div className="flex flex-col items-center gap-4 text-center">
+          {/* Radar pulse animation */}
+          <div className="relative flex items-center justify-center">
+            <motion.div
+              className="absolute rounded-full"
+              style={{
+                width: 80,
+                height: 80,
+                border: "1px solid rgba(0,212,255,0.15)",
+              }}
+              animate={{ scale: [1, 1.8], opacity: [0.4, 0] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
+            />
+            <motion.div
+              className="absolute rounded-full"
+              style={{
+                width: 80,
+                height: 80,
+                border: "1px solid rgba(0,212,255,0.10)",
+              }}
+              animate={{ scale: [1, 1.8], opacity: [0.3, 0] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut", delay: 0.8 }}
+            />
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-full"
+              style={{
+                background: "radial-gradient(circle, rgba(0,212,255,0.08) 0%, transparent 70%)",
+                border: "1px solid rgba(0,212,255,0.20)",
+              }}
+            >
+              <Radar size={24} style={{ color: "var(--neon-blue)", opacity: 0.7 }} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p
+              className="text-sm font-semibold"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              최근 48시간 내에 수집된 주요 뉴스가 없습니다
+            </p>
+            <p
+              className="text-xs leading-relaxed"
+              style={{ color: "var(--text-muted)" }}
+            >
+              레이더가 새로운 인텔리전스를 탐지하면
+              <br />
+              이곳에 브리핑 카드가 나타납니다
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -436,7 +474,7 @@ export default function AiBriefingSwipeCards({
               className="text-[10px] font-mono uppercase tracking-widest"
               style={{ color: "var(--text-muted)" }}
             >
-              TOP {cards.length} INTELLIGENCE
+              LAST 48H · TOP {cards.length}
             </p>
           </div>
         </div>
