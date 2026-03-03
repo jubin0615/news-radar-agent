@@ -43,18 +43,25 @@ public class RagService {
     private final Resource               askPromptResource;
     private final Resource               trendBriefingPromptResource;
 
+    private final Resource               askUserPromptResource;
+    private final Resource               trendBriefingUserPromptResource;
+
     public RagService(
             NewsVectorStoreService vectorStoreService,
             NewsRepository newsRepository,
             ChatClient.Builder chatClientBuilder,
             @Value("classpath:prompts/rag-ask.st") Resource askPromptResource,
-            @Value("classpath:prompts/rag-trend-briefing.st") Resource trendBriefingPromptResource
+            @Value("classpath:prompts/rag-ask-user.st") Resource askUserPromptResource,
+            @Value("classpath:prompts/rag-trend-briefing.st") Resource trendBriefingPromptResource,
+            @Value("classpath:prompts/rag-trend-briefing-user.st") Resource trendBriefingUserPromptResource
     ) {
-        this.vectorStoreService          = vectorStoreService;
-        this.newsRepository              = newsRepository;
-        this.chatClient                  = chatClientBuilder.build();
-        this.askPromptResource           = askPromptResource;
-        this.trendBriefingPromptResource = trendBriefingPromptResource;
+        this.vectorStoreService               = vectorStoreService;
+        this.newsRepository                   = newsRepository;
+        this.chatClient                       = chatClientBuilder.build();
+        this.askPromptResource                = askPromptResource;
+        this.askUserPromptResource            = askUserPromptResource;
+        this.trendBriefingPromptResource      = trendBriefingPromptResource;
+        this.trendBriefingUserPromptResource  = trendBriefingUserPromptResource;
     }
 
     /**
@@ -82,18 +89,22 @@ public class RagService {
         // 2. 검색된 기사를 번호가 붙은 컨텍스트 블록으로 변환
         String context = buildContext(retrieved);
 
-        // 3. 외부 프롬프트 템플릿 로드 + 변수 주입
-        PromptTemplate promptTemplate = new PromptTemplate(askPromptResource);
-        String prompt = promptTemplate.render(Map.of(
+        // 3. 시스템/사용자 프롬프트 분리 (프롬프트 인젝션 방어)
+        PromptTemplate systemTemplate = new PromptTemplate(askPromptResource);
+        String systemPrompt = systemTemplate.render(Map.of());
+
+        PromptTemplate userTemplate = new PromptTemplate(askUserPromptResource);
+        String userMessage = userTemplate.render(Map.of(
                 "context", context,
-                "question", question
+                "question", PromptSanitizer.sanitize(question)
         ));
 
         // 4. GPT-4o-mini로 답변 생성
         String answer;
         try {
             answer = chatClient.prompt()
-                    .user(prompt)
+                    .system(systemPrompt)
+                    .user(userMessage)
                     .call()
                     .content();
             if (answer == null || answer.isBlank()) {
@@ -134,14 +145,18 @@ public class RagService {
         // 뉴스를 번호 붙인 컨텍스트 블록으로 변환
         String context = buildTrendContext(trendNews);
 
-        // 외부 프롬프트 템플릿 로드 + 변수 주입
-        PromptTemplate promptTemplate = new PromptTemplate(trendBriefingPromptResource);
-        String prompt = promptTemplate.render(Map.of("context", context));
+        // 시스템/사용자 프롬프트 분리 (프롬프트 인젝션 방어)
+        PromptTemplate systemTemplate = new PromptTemplate(trendBriefingPromptResource);
+        String systemPrompt = systemTemplate.render(Map.of());
+
+        PromptTemplate userTemplate = new PromptTemplate(trendBriefingUserPromptResource);
+        String userMessage = userTemplate.render(Map.of("context", context));
 
         String answer;
         try {
             answer = chatClient.prompt()
-                    .user(prompt)
+                    .system(systemPrompt)
+                    .user(userMessage)
                     .call()
                     .content();
             if (answer == null || answer.isBlank()) {

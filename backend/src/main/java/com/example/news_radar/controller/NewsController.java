@@ -138,6 +138,15 @@ public class NewsController {
         return openAiService.getSummary(title);
     }
 
+    // AI 분석 실패 뉴스 재분석 (DNS 장애 등 복구 후 일괄 재시도)
+    @PostMapping("/retry-analysis")
+    public String retryFailedAnalysis() {
+        int count = newsService.retryFailedAnalysis();
+        return count > 0
+                ? count + "건의 뉴스를 재분석 완료했습니다."
+                : "재분석할 실패 뉴스가 없습니다.";
+    }
+
     @GetMapping("/trends")
     public NewsTrendResponse getTrends(@RequestParam(defaultValue = "7") int days) {
         return newsTrendService.analyzeTrends(days);

@@ -137,11 +137,13 @@ export default function DashboardView() {
   const prevCollectingRef = useRef<boolean | null>(null);
 
   useEffect(() => {
+    let unmounted = false;
     const fetchData = async () => {
       try {
-        const res = await fetch("/api/news/collection-status");
+        const res = await fetch("/api/news/collection-status", { cache: "no-store" });
         if (res.ok) {
           const data: DashboardStats = await res.json();
+          if (unmounted) return;
 
           // 수집 중 → 완료 전환 감지 시 즉시 브리핑 갱신 이벤트 발행
           if (prevCollectingRef.current === true && !data.collecting) {
@@ -151,16 +153,23 @@ export default function DashboardView() {
 
           setStats(data);
         }
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
+      } catch {
+        // Keep previous stats on transient network failure.
       } finally {
-        setLoading(false);
+        if (!unmounted) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    void fetchData();
+    const interval = setInterval(() => {
+      void fetchData();
+    }, 10000);
+    return () => {
+      unmounted = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleCardClick = useCallback((news: NewsItem) => {

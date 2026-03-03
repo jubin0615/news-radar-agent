@@ -90,6 +90,11 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "ORDER BY n.importanceScore DESC NULLS LAST, n.collectedAt DESC")
     List<News> findRecentBriefingNews(LocalDateTime since);
 
+    // AI 분석 실패한 활성 뉴스 조회 (summary 또는 aiReason에 "실패" 포함)
+    @Query("SELECT n FROM News n WHERE n.isActive = true " +
+           "AND (n.summary LIKE '%실패%' OR n.aiReason LIKE '%실패%')")
+    List<News> findFailedAnalysis();
+
     // 오래된 뉴스 하드 삭제 — 스케줄러에서 DB 정리용
     @Modifying
     @Transactional

@@ -377,6 +377,65 @@ public class NewsService {
         return savedNewsList.size();
     }
 
+    // ==================== 실패한 뉴스 재분석 ====================
+
+    /**
+     * AI 분석이 실패한 뉴스(summary 또는 aiReason에 "실패" 포함)를 찾아 재분석한다.
+     * DNS 장애 등 일시적 오류로 실패한 뉴스를 네트워크 복구 후 일괄 복구하는 용도.
+     *
+     * @return 재분석 완료 건수
+     */
+    @Transactional
+    public int retryFailedAnalysis() {
+        List<News> failedNews = newsRepository.findFailedAnalysis();
+        if (failedNews.isEmpty()) {
+            log.info("[재분석] 실패한 뉴스가 없습니다.");
+            return 0;
+        }
+
+        log.info("[재분석] 실패한 뉴스 {}건 재분석 시작", failedNews.size());
+
+        List<String> allKeywordNames = keywordRepository.findByStatus(KeywordStatus.ACTIVE).stream()
+                .map(Keyword::getName)
+                .collect(Collectors.toList());
+
+        int successCount = 0;
+        for (News news : failedNews) {
+            try {
+                AiEvaluation aiEval = openAiService.evaluateImportance(
+                        news.getTitle(), news.getContent(), allKeywordNames);
+
+                int llmScore = importanceEvaluator.calculateLlmScore(aiEval);
+                int structuralScore = importanceEvaluator.calculateStructuralScore(
+                        news.getTitle(), news.getContent(), allKeywordNames);
+                int metadataScore = importanceEvaluator.calculateMetadataScore(news.getUrl());
+                int finalScore = importanceEvaluator.calculateFinalScore(llmScore, structuralScore, metadataScore);
+
+                news.setAiScore(llmScore);
+                news.setInnovationScore(aiEval.innovation());
+                news.setTimelinessScore(aiEval.timeliness());
+                news.setKeywordMatchScore(structuralScore);
+                news.setMetadataScore(metadataScore);
+                news.setAiReason(aiEval.reason());
+                news.setCategory(aiEval.category());
+                news.setSummary(aiEval.summary());
+                news.setImportanceScore(finalScore);
+
+                newsRepository.save(news);
+                newsVectorStoreService.addOrUpdate(news);
+                successCount++;
+
+                log.info("[재분석] 성공: id={}, title='{}'", news.getId(), news.getTitle());
+            } catch (Exception e) {
+                log.error("[재분석] 실패: id={}, title='{}', error={}", news.getId(), news.getTitle(), e.getMessage());
+            }
+        }
+
+        log.info("[재분석] 완료: 전체={}건, 성공={}건, 실패={}건",
+                failedNews.size(), successCount, failedNews.size() - successCount);
+        return successCount;
+    }
+
     // ==================== 유틸 ====================
 
     private String now() {
