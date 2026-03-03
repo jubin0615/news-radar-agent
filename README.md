@@ -1,4 +1,4 @@
-# 📡 News Radar Agent (뉴스 레이더)
+## 📡 News Radar Agent (뉴스 레이더)
 
 **News Radar Agent**는 사용자가 설정한 관심 키워드를 바탕으로 뉴스를 자동 수집하고, AI를 통해 정보의 가치를 평가하며, 대화형 인터페이스(RAG)로 궁금한 점을 즉시 해결할 수 있는 **지능형 뉴스 큐레이션 및 분석 플랫폼**입니다.
 
@@ -14,21 +14,22 @@
 ## 🛠 기술 스택
 
 ### Backend
-* **Framework:** Java+Spring Boot
-* **AI & Data:** Spring AI, OpenAI API (GPT-4o-mini), SimpleVectorStore (In-Memory RAG)
-* **Database:** Spring Data JPA, H2 Database
+* **Framework:** Java 21, Spring Boot (3.5.x)
+* **AI & Data:** Spring AI, OpenAI API (GPT-4o-mini)
+* **Vector Store:** SimpleVectorStore (In-Memory RAG), PgVector (PostgreSQL 기반 벡터 스토어)
+* **Database:** Spring Data JPA, H2 Database, PostgreSQL
 * **Crawling:** Jsoup (Naver News)
 
 ### Frontend
 * **Framework:** Next.js, React
-* **Styling:** Tailwind CSS
+* **Styling & UI:** Tailwind CSS (v4), Framer Motion (애니메이션), Lucide React (아이콘), AG UI
 * **Integration:** CopilotKit (AI Agent UI)
 
 ## 📁 프로젝트 구조
 
-프론트엔드와 백엔드가 분리된 모노레포 형태로 구성
+프론트엔드와 백엔드가 분리된 모노레포 형태
 
 ```text
 news-radar-agent/
-├── backend/          # Spring Boot 기반의 API 서버 및 AI 에이전트 (크롤링, 임베딩, RAG)
+├── backend/          # Spring Boot 기반의 API 서버 및 AI 에이전트 (크롤링, 임베딩, RAG, 장애 복구 처리)
 └── frontend/         # Next.js 기반의 사용자 웹 인터페이스
