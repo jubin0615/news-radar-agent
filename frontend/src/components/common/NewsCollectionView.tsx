@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   Filter,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useNavigation } from "@/lib/NavigationContext";
@@ -83,6 +85,8 @@ function formatRelativeTime(isoString: string): string {
   return `${days}일 전`;
 }
 
+const PAGE_SIZE = 12;
+
 // ── Component ────────────────────────────────────────────────── //
 export default function NewsCollectionView({ className }: { className?: string }) {
   const {
@@ -100,6 +104,10 @@ export default function NewsCollectionView({ className }: { className?: string }
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [activeDate, setActiveDate] = useState<string | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // 뉴스 목록 스크롤 컨테이너 ref
+  const newsListRef = useRef<HTMLDivElement | null>(null);
 
   // 이전 fetch 취소용 AbortController (race condition 방지)
   const abortRef = useRef<AbortController | null>(null);
@@ -167,6 +175,7 @@ export default function NewsCollectionView({ className }: { className?: string }
       } else {
         setNews(data);
       }
+      setCurrentPage(1);
     } catch (err: unknown) {
       // 취소된 요청은 무시 (새 요청이 진행 중)
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -233,6 +242,7 @@ export default function NewsCollectionView({ className }: { className?: string }
   // ── Search / Filter ──
   const handleSearch = () => {
     const trimmed = searchInput.trim();
+    setCurrentPage(1);
     if (trimmed) {
       setActiveFilter(trimmed);
       setActiveDate(null);
@@ -249,6 +259,7 @@ export default function NewsCollectionView({ className }: { className?: string }
     setActiveFilter(null);
     setActiveDate(null);
     setSearchInput("");
+    setCurrentPage(1);
     clearSelectedKeyword();
     clearSelectedDate();
   };
@@ -258,6 +269,7 @@ export default function NewsCollectionView({ className }: { className?: string }
     setActiveDate(today);
     setActiveFilter(null);
     setSearchInput("");
+    setCurrentPage(1);
     clearSelectedKeyword();
   };
 
@@ -563,7 +575,7 @@ export default function NewsCollectionView({ className }: { className?: string }
       )}
 
       {/* ── News list ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={newsListRef} className="flex-1 overflow-y-auto">
         {isLoadingNews ? (
           <div className="flex items-center justify-center py-16 gap-2">
             <Loader2
@@ -610,24 +622,55 @@ export default function NewsCollectionView({ className }: { className?: string }
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <p
-              className="text-xs font-medium"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {news.length}건의 뉴스
-            </p>
-            <AnimatePresence mode="popLayout">
-              {news.map((item, i) => (
-                <NewsListItem
-                  key={item.id}
-                  news={item}
-                  index={i}
-                  onSelect={setSelectedNews}
-                />
-              ))}
-            </AnimatePresence>
-          </div>
+          (() => {
+            const totalPages = Math.ceil(news.length / PAGE_SIZE);
+            const safePage = Math.min(currentPage, totalPages);
+            const startIdx = (safePage - 1) * PAGE_SIZE;
+            const pageItems = news.slice(startIdx, startIdx + PAGE_SIZE);
+
+            return (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p
+                    className="text-xs font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {news.length}건의 뉴스
+                  </p>
+                  {totalPages > 1 && (
+                    <p
+                      className="text-xs tabular-nums"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {safePage} / {totalPages} 페이지
+                    </p>
+                  )}
+                </div>
+                <AnimatePresence mode="popLayout">
+                  {pageItems.map((item, i) => (
+                    <NewsListItem
+                      key={item.id}
+                      news={item}
+                      index={i}
+                      onSelect={setSelectedNews}
+                    />
+                  ))}
+                </AnimatePresence>
+
+                {/* ── Pagination Controls ── */}
+                {totalPages > 1 && (
+                  <Pagination
+                    currentPage={safePage}
+                    totalPages={totalPages}
+                    onPageChange={(page) => {
+                      setCurrentPage(page);
+                      newsListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })()
         )}
       </div>
 
@@ -748,6 +791,108 @@ function NewsListItem({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ── Pagination ───────────────────────────────────────────────── //
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  // Build visible page numbers: always show first, last, current ±1
+  const pages: (number | "ellipsis")[] = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (
+      i === 1 ||
+      i === totalPages ||
+      (i >= currentPage - 1 && i <= currentPage + 1)
+    ) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== "ellipsis") {
+      pages.push("ellipsis");
+    }
+  }
+
+  const btnBase =
+    "flex h-8 min-w-[2rem] items-center justify-center rounded-lg text-xs font-medium transition-all duration-200";
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 pt-2 pb-1">
+      {/* Prev */}
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+        className={cn(btnBase, "px-2 gap-1")}
+        style={{
+          background: currentPage <= 1 ? "transparent" : "var(--glass-bg)",
+          border: "1px solid var(--glass-border)",
+          color: currentPage <= 1 ? "var(--text-muted)" : "var(--text-secondary)",
+          opacity: currentPage <= 1 ? 0.4 : 1,
+          cursor: currentPage <= 1 ? "default" : "pointer",
+        }}
+      >
+        <ChevronLeft size={14} />
+        <span className="hidden sm:inline">이전</span>
+      </button>
+
+      {/* Page numbers */}
+      {pages.map((p, idx) =>
+        p === "ellipsis" ? (
+          <span
+            key={`e-${idx}`}
+            className="flex h-8 w-6 items-center justify-center text-xs"
+            style={{ color: "var(--text-muted)" }}
+          >
+            ...
+          </span>
+        ) : (
+          <button
+            key={p}
+            onClick={() => onPageChange(p)}
+            className={cn(btnBase, "px-1")}
+            style={{
+              background:
+                p === currentPage
+                  ? "rgba(0,212,255,0.15)"
+                  : "var(--glass-bg)",
+              border:
+                p === currentPage
+                  ? "1px solid rgba(0,212,255,0.35)"
+                  : "1px solid var(--glass-border)",
+              color:
+                p === currentPage
+                  ? "var(--neon-blue)"
+                  : "var(--text-secondary)",
+              fontWeight: p === currentPage ? 700 : 500,
+            }}
+          >
+            {p}
+          </button>
+        ),
+      )}
+
+      {/* Next */}
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage >= totalPages}
+        className={cn(btnBase, "px-2 gap-1")}
+        style={{
+          background: currentPage >= totalPages ? "transparent" : "var(--glass-bg)",
+          border: "1px solid var(--glass-border)",
+          color: currentPage >= totalPages ? "var(--text-muted)" : "var(--text-secondary)",
+          opacity: currentPage >= totalPages ? 0.4 : 1,
+          cursor: currentPage >= totalPages ? "default" : "pointer",
+        }}
+      >
+        <span className="hidden sm:inline">다음</span>
+        <ChevronRight size={14} />
+      </button>
+    </div>
   );
 }
 
