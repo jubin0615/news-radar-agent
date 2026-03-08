@@ -651,14 +651,17 @@ export default function KeywordMap({
   }, [keywords]);
 
   // SVG layout
-  const viewW = 400;
-  const viewH = 360;
-  const cx = viewW / 2;
-  const cy = viewH / 2 - 8;
+  const viewSize = 360;
+  const viewW = viewSize;
+  const viewH = viewSize;
+  const cx = viewSize / 2;
+  const cy = viewSize / 2;
+  const orbitRadius = 128;
+  const sweepRadius = 156;
 
   const positions = useMemo(
-    () => computeOrbitPositions(keywords.length, cx, cy, 140, 120),
-    [keywords.length, cx, cy],
+    () => computeOrbitPositions(keywords.length, cx, cy, orbitRadius, orbitRadius),
+    [keywords.length, cx, cy, orbitRadius],
   );
 
   // Determine which IDs are "active" (selected or hovered + neighbors)
@@ -686,12 +689,7 @@ export default function KeywordMap({
 
   return (
     <div className={`relative overflow-hidden ${className ?? ""}`}>
-      <motion.div
-        className="relative"
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-        onClick={handleBackdropClick}
-      >
+      <div className="relative" onClick={handleBackdropClick}>
         {/* Title */}
         <div className="mb-3 flex items-center gap-2">
           <div
@@ -719,8 +717,8 @@ export default function KeywordMap({
 
         <svg
           viewBox={`0 0 ${viewW} ${viewH}`}
-          className="w-full h-auto"
-          style={{ maxHeight: "360px" }}
+          preserveAspectRatio="xMidYMid meet"
+          className="mx-auto block h-auto w-full max-w-[420px]"
         >
           <SvgDefs />
 
@@ -773,21 +771,47 @@ export default function KeywordMap({
             ))}
           </g>
 
-          {/* ── Layer 1: Sweeping radar beam via foreignObject ── */}
-          <foreignObject x={cx - 160} y={cy - 160} width={320} height={320} style={{ pointerEvents: "none" }}>
-            <div
-              className="radar-sweep-beam"
+          {/* ── Layer 1: Sweeping radar beam (pure SVG) ── */}
+          <g style={{ pointerEvents: "none" }}>
+            <defs>
+              <mask id="radar-sweep-mask">
+                <radialGradient id="radar-sweep-fade" cx="50%" cy="50%" r="50%">
+                  <stop offset="30%" stopColor="white" />
+                  <stop offset="70%" stopColor="black" />
+                </radialGradient>
+                <circle cx={cx} cy={cy} r={sweepRadius} fill="url(#radar-sweep-fade)" />
+              </mask>
+            </defs>
+            <g
+              mask="url(#radar-sweep-mask)"
               style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: "50%",
+                transformOrigin: `${cx}px ${cy}px`,
+                animation: "radarSweep 4s linear infinite",
+                willChange: "transform",
               }}
-            />
-          </foreignObject>
+            >
+              {/* Wedge-shaped sweep beam using a pie slice path */}
+              <path
+                d={`M ${cx} ${cy} L ${cx} ${cy - sweepRadius} A ${sweepRadius} ${sweepRadius} 0 0 1 ${cx + sweepRadius * Math.sin(Math.PI / 6)} ${cy - sweepRadius * Math.cos(Math.PI / 6)} Z`}
+                fill="rgba(0,212,255,0.18)"
+              />
+              <path
+                d={`M ${cx} ${cy} L ${cx + sweepRadius * Math.sin(Math.PI / 6)} ${cy - sweepRadius * Math.cos(Math.PI / 6)} A ${sweepRadius} ${sweepRadius} 0 0 1 ${cx + sweepRadius * Math.sin(Math.PI / 3)} ${cy - sweepRadius * Math.cos(Math.PI / 3)} Z`}
+                fill="rgba(0,212,255,0.08)"
+              />
+              <path
+                d={`M ${cx} ${cy} L ${cx + sweepRadius * Math.sin(Math.PI / 3)} ${cy - sweepRadius * Math.cos(Math.PI / 3)} A ${sweepRadius} ${sweepRadius} 0 0 1 ${cx + sweepRadius} ${cy} Z`}
+                fill="rgba(0,212,255,0.02)"
+              />
+            </g>
+          </g>
 
           {/* Orbit track ellipse */}
           <ellipse
-            cx={cx} cy={cy} rx={140} ry={120}
+            cx={cx}
+            cy={cy}
+            rx={orbitRadius}
+            ry={orbitRadius}
             fill="none"
             stroke="rgba(0,212,255,0.08)"
             strokeWidth={0.8}
@@ -800,7 +824,10 @@ export default function KeywordMap({
 
           {/* Secondary orbit ring (decorative) */}
           <ellipse
-            cx={cx} cy={cy} rx={155} ry={135}
+            cx={cx}
+            cy={cy}
+            rx={orbitRadius + 15}
+            ry={orbitRadius + 15}
             fill="none"
             stroke="rgba(168,85,247,0.04)"
             strokeWidth={0.5}
@@ -854,7 +881,7 @@ export default function KeywordMap({
             </text>
           )}
         </svg>
-      </motion.div>
+      </div>
 
       {/* ── Info Panel (slide-in from right) ── */}
       <AnimatePresence>

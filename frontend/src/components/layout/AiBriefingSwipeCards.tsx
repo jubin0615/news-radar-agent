@@ -137,7 +137,7 @@ function SwipeCard({
           }}
         />
 
-        <div className="flex h-full flex-col justify-between p-5">
+        <div className="flex h-full flex-col p-4 md:p-5">
           {/* Header: AI Insight label + Badge + Score */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -186,25 +186,16 @@ function SwipeCard({
             </div>
           </div>
 
-          {/* AI Reason (main focus) */}
-          <div className="mt-3 mb-2 flex-1">
-            {news.aiReason ? (
-              <p className="text-lg font-bold leading-relaxed text-white line-clamp-3">
-                {news.aiReason}
-              </p>
-            ) : (
-              <p
-                className="text-lg font-bold leading-relaxed line-clamp-3"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {news.summary || news.title}
-              </p>
-            )}
+          {/* AI Reason (main focus) — flex-1 to fill available space */}
+          <div className="mt-3 mb-3 min-h-0 flex-1 overflow-y-auto">
+            <p className="text-sm font-bold leading-relaxed text-white md:text-base">
+              {news.aiReason || news.summary || news.title}
+            </p>
           </div>
 
           {/* Title (with clear label) */}
           <div
-            className="mb-2 rounded-lg px-3 py-2.5"
+            className="mb-2 shrink-0 rounded-lg px-3 py-2"
             style={{
               background: "rgba(255,255,255,0.06)",
               border: "1px solid rgba(255,255,255,0.10)",
@@ -219,10 +210,7 @@ function SwipeCard({
                 원문 기사
               </span>
             </div>
-            <p
-              className="text-sm font-semibold leading-snug line-clamp-2"
-              style={{ color: "var(--text-primary)" }}
-            >
+            <p className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: "var(--text-primary)" }}>
               {news.title}
             </p>
             <div className="mt-1.5 flex items-center gap-3">
@@ -246,9 +234,9 @@ function SwipeCard({
             </div>
           </div>
 
-          {/* Bottom: Click guide — enlarged */}
+          {/* Bottom: Click guide */}
           <div
-            className="flex items-center justify-center gap-2 rounded-lg py-2"
+            className="flex items-center justify-center gap-2 rounded-lg py-1.5 md:py-2"
             style={{ background: "rgba(0,212,255,0.04)" }}
           >
             <MousePointerClick size={16} style={{ color: "var(--neon-blue)" }} />
@@ -451,7 +439,7 @@ export default function AiBriefingSwipeCards({
   return (
     <div className="flex h-full flex-col">
       {/* Title */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="mb-4 flex items-center justify-between md:mb-5">
         <div className="flex items-center gap-2.5">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg"
@@ -514,8 +502,8 @@ export default function AiBriefingSwipeCards({
         </div>
       </div>
 
-      {/* Cards stack */}
-      <div className="relative flex-1 min-h-[260px]">
+      {/* Cards stack — flex-1 with max-h cap to prevent oversized cards on large screens */}
+      <div className="relative min-h-0 flex-1 w-full max-h-[480px]">
         <AnimatePresence>
           {isEnd ? (
             <motion.div
@@ -567,11 +555,11 @@ export default function AiBriefingSwipeCards({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
-          className="mt-4 flex items-center justify-center gap-2 py-2"
+          className="mt-3 flex items-center justify-center gap-2 py-2 md:mt-4"
         >
           <ChevronLeft size={16} style={{ color: "var(--neon-blue)", opacity: 0.7 }} />
           <span
-            className="text-sm font-semibold tracking-wider uppercase"
+            className="text-xs font-semibold tracking-wider uppercase sm:text-sm"
             style={{
               color: "var(--neon-blue)",
               textShadow: "0 0 8px rgba(0,212,255,0.35)",
