@@ -243,7 +243,7 @@ public class OpenAiService {
                 - timeliness(시의성): 현재 트렌드와의 관련성 및 시의적절함 (0~15점)
 
                 [응답 형식]
-                {"impact": 0~20 사이 정수, "innovation": 0~15 사이 정수, "timeliness": 0~15 사이 정수, "reason": "이 뉴스가 중요한 이유 1~2문장", "category": "주요 기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
+                {"impact": 0~20 사이 정수, "innovation": 0~15 사이 정수, "timeliness": 0~15 사이 정수, "reason": "이 뉴스가 중요한 이유를 구체적 근거와 함께 3~4문장으로 상세히 설명", "category": "주요 기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
                 """ + PROMPT_INJECTION_GUARD;
 
         String userMessage = """
@@ -377,7 +377,7 @@ public class OpenAiService {
                 3. 기사 %d개 모두에 대해 빠짐없이 평가해.
 
                 [각 객체의 형식]
-                {"articleIndex": 정수, "impact": 0~20, "innovation": 0~15, "timeliness": 0~15, "reason": "중요한 이유 1~2문장", "category": "기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
+                {"articleIndex": 정수, "impact": 0~20, "innovation": 0~15, "timeliness": 0~15, "reason": "이 뉴스가 중요한 이유를 구체적 근거와 함께 3~4문장으로 상세히 설명", "category": "기술 카테고리 하나", "summary": "핵심 내용 3줄 요약"}
                 """.formatted(items.size(), items.size()) + PROMPT_INJECTION_GUARD;
 
         String userMessage = """
