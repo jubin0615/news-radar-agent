@@ -29,6 +29,7 @@ export async function GET() {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",   // Cloudflare/Nginx 프록시 버퍼링 비활성화
       },
     });
   } catch {
