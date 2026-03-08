@@ -37,9 +37,21 @@ public class Keyword {
 
     private LocalDateTime createdAt;
 
+    // 키워드 소유자 (null = 시스템/마이그레이션 이전 데이터)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    /** 기존 생성자 — 하위 호환성 유지 */
     public Keyword(String name) {
         this.name = name;
         this.status = KeywordStatus.ACTIVE;
         this.createdAt = LocalDateTime.now();
+    }
+
+    /** 사용자 연결 생성자 */
+    public Keyword(String name, User user) {
+        this(name);
+        this.user = user;
     }
 }

@@ -17,4 +17,7 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     // 이름으로 조회 (대소문자 무시)
     Optional<Keyword> findByNameIgnoreCase(String name);
+
+    // 특정 사용자의 키워드 조회
+    List<Keyword> findByUserId(Long userId);
 }
