@@ -1,0 +1,24 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches: [ "main" ]
+    # 백엔드 코드나 도커 설정이 바뀔 때만 작동하도록 설정
+    paths:
+      - 'backend/**'
+      - 'docker-compose.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: EC2에 접속해서 배포 명령어 실행하기
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        script: |
+          cd ~/news-radar-agent
+          git pull origin main
+          sudo docker-compose up -d --build
