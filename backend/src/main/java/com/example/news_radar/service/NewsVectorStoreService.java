@@ -220,7 +220,7 @@ public class NewsVectorStoreService {
 
     /**
      * 뉴스를 TokenTextSplitter로 청킹하여 Document 리스트로 변환합니다.
-     * 메타데이터에 tags 필드를 포함하여 PgVectorStore의 메타데이터 필터링을 지원합니다.
+     * 메타데이터에 tags, ownerUserIds 필드를 포함하여 사용자별 격리 및 필터링을 지원합니다.
      */
     private List<Document> newsToDocuments(News news) {
         Map<String, Object> baseMetadata = new HashMap<>();
@@ -232,6 +232,10 @@ public class NewsVectorStoreService {
         baseMetadata.put("importanceScore", news.getImportanceScore() != null ? news.getImportanceScore() : 0);
         baseMetadata.put("category", nvl(news.getCategory()));
         baseMetadata.put("aiReason", nvl(news.getAiReason()));
+
+        // 해당 키워드를 등록한 사용자 ID 목록을 메타데이터에 포함 (사용자별 RAG 격리)
+        String ownerUserIds = resolveOwnerUserIds(news.getKeyword());
+        baseMetadata.put("ownerUserIds", ownerUserIds);
 
         // 자동 추출 태그가 있으면 메타데이터에 추가 (RAG 필터링 강화)
         if (news.getTags() != null && !news.getTags().isBlank()) {
@@ -302,6 +306,24 @@ public class NewsVectorStoreService {
             ((SimpleVectorStore) vectorStore).save(storeFile);
         } catch (Exception e) {
             log.error("[RAG] 벡터 스토어 저장 실패: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 뉴스 키워드를 등록한 모든 사용자 ID를 쉼표 구분 문자열로 반환.
+     * RAG 검색 시 ownerUserIds CONTAINS 필터로 사용자별 격리를 보강.
+     */
+    private String resolveOwnerUserIds(String keyword) {
+        if (keyword == null || keyword.isBlank()) return "";
+        try {
+            return keywordRepository.findAllByNameIgnoreCase(keyword).stream()
+                    .filter(k -> k.getUser() != null)
+                    .map(k -> String.valueOf(k.getUser().getId()))
+                    .distinct()
+                    .collect(java.util.stream.Collectors.joining(","));
+        } catch (Exception e) {
+            log.warn("[RAG] ownerUserIds 조회 실패 (keyword={}): {}", keyword, e.getMessage());
+            return "";
         }
     }
 
