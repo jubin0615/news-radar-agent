@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: EC2에 접속해서 배포 명령어 실행하기
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
@@ -22,4 +22,5 @@ jobs:
         script: |
           cd ~/news-radar-agent
           git pull origin main
-          sudo docker-compose up -d --build
+          sudo docker compose down
+          sudo docker compose up -d --build
