@@ -1,0 +1,45 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-newsradar}
+      POSTGRES_USER: ${DB_USERNAME:-newsradar}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-newsradar}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-newsradar}
+      DB_USERNAME: ${DB_USERNAME:-newsradar}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # AI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      # CORS — 프론트엔드 배포 도메인 (Vercel 등)
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+volumes:
+  pgdata:
