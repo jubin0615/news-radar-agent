@@ -1227,3 +1227,238 @@
   transform: translateX(3px);
   color: var(--neon-purple);
 }
+
+/* ================================================================
+   LOGIN PAGE — Animated Background + Glassmorphic Card
+   ================================================================ */
+
+.login-page {
+  position: relative;
+}
+
+/* ── Floating background orbs ── */
+.login-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.login-orb-blue {
+  width: 400px;
+  height: 400px;
+  background: var(--neon-blue);
+  top: -10%;
+  left: -5%;
+  animation: loginOrbFloat1 8s ease-in-out infinite;
+}
+
+.login-orb-purple {
+  width: 350px;
+  height: 350px;
+  background: var(--neon-purple);
+  bottom: -10%;
+  right: -5%;
+  animation: loginOrbFloat2 10s ease-in-out infinite;
+}
+
+.login-orb-cyan {
+  width: 250px;
+  height: 250px;
+  background: #06b6d4;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.15;
+  animation: loginOrbFloat3 12s ease-in-out infinite;
+}
+
+@keyframes loginOrbFloat1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, 30px) scale(1.1); }
+  66% { transform: translate(-20px, 50px) scale(0.95); }
+}
+
+@keyframes loginOrbFloat2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-30px, -40px) scale(1.05); }
+  66% { transform: translate(25px, -20px) scale(0.9); }
+}
+
+@keyframes loginOrbFloat3 {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.3); }
+}
+
+/* ── Floating particles ── */
+.login-particles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--neon-blue);
+  opacity: 0;
+  animation: loginParticleRise linear infinite;
+}
+
+.login-particle:nth-child(odd) {
+  background: var(--neon-purple);
+}
+
+.login-particle:nth-child(1)  { left:  5%; animation-duration: 7s;  animation-delay: 0s;   }
+.login-particle:nth-child(2)  { left: 12%; animation-duration: 9s;  animation-delay: 1s;   }
+.login-particle:nth-child(3)  { left: 20%; animation-duration: 6s;  animation-delay: 0.5s; }
+.login-particle:nth-child(4)  { left: 28%; animation-duration: 8s;  animation-delay: 2s;   }
+.login-particle:nth-child(5)  { left: 35%; animation-duration: 10s; animation-delay: 0.3s; }
+.login-particle:nth-child(6)  { left: 42%; animation-duration: 7s;  animation-delay: 1.5s; }
+.login-particle:nth-child(7)  { left: 50%; animation-duration: 8s;  animation-delay: 0.8s; }
+.login-particle:nth-child(8)  { left: 57%; animation-duration: 6s;  animation-delay: 2.5s; }
+.login-particle:nth-child(9)  { left: 65%; animation-duration: 9s;  animation-delay: 0.2s; }
+.login-particle:nth-child(10) { left: 72%; animation-duration: 7s;  animation-delay: 1.8s; }
+.login-particle:nth-child(11) { left: 78%; animation-duration: 8s;  animation-delay: 0.7s; }
+.login-particle:nth-child(12) { left: 83%; animation-duration: 6s;  animation-delay: 3s;   }
+.login-particle:nth-child(13) { left: 88%; animation-duration: 10s; animation-delay: 0.4s; }
+.login-particle:nth-child(14) { left: 92%; animation-duration: 7s;  animation-delay: 2.2s; }
+.login-particle:nth-child(15) { left: 95%; animation-duration: 9s;  animation-delay: 1.2s; }
+.login-particle:nth-child(16) { left:  8%; animation-duration: 8s;  animation-delay: 3.5s; }
+.login-particle:nth-child(17) { left: 25%; animation-duration: 6s;  animation-delay: 0.9s; }
+.login-particle:nth-child(18) { left: 48%; animation-duration: 7s;  animation-delay: 2.8s; }
+.login-particle:nth-child(19) { left: 60%; animation-duration: 9s;  animation-delay: 1.6s; }
+.login-particle:nth-child(20) { left: 75%; animation-duration: 8s;  animation-delay: 0.1s; }
+
+@keyframes loginParticleRise {
+  0%   { bottom: -5%; opacity: 0; transform: scale(1); }
+  10%  { opacity: 0.7; }
+  90%  { opacity: 0.7; }
+  100% { bottom: 105%; opacity: 0; transform: scale(0.5); }
+}
+
+/* ── Glassmorphic card ── */
+.login-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px);
+  box-shadow:
+    0 0 60px rgba(0, 212, 255, 0.06),
+    0 0 120px rgba(168, 85, 247, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: loginCardAppear 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes loginCardAppear {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Logo with animated ring ── */
+.login-logo-ring {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-logo-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  padding: 2px;
+  background: conic-gradient(
+    from 0deg,
+    var(--neon-blue),
+    var(--neon-purple),
+    var(--neon-blue)
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: loginLogoSpin 4s linear infinite;
+}
+
+@keyframes loginLogoSpin {
+  to { rotate: 360deg; }
+}
+
+.login-logo-inner {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(168, 85, 247, 0.12));
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.15);
+  animation: loginLogoPulse 3s ease-in-out infinite;
+}
+
+@keyframes loginLogoPulse {
+  0%, 100% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.15); }
+  50% { box-shadow: 0 0 50px rgba(0, 212, 255, 0.25), 0 0 80px rgba(168, 85, 247, 0.1); }
+}
+
+/* ── Login buttons ── */
+.login-btn {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.login-btn:active {
+  transform: translateY(0);
+}
+
+/* Glow overlay on hover */
+.login-btn-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.login-btn:hover .login-btn-glow {
+  opacity: 1;
+}
+
+.login-btn-glow-blue {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 212, 255, 0.02));
+}
+
+.login-btn-glow-purple {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(168, 85, 247, 0.02));
+}
