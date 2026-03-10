@@ -1,5 +1,5 @@
 /**
- * CopilotKit Runtime Endpoint (single-route transport)
+ * CopilotKit Runtime Endpoint
  *
  * Frontend `useSingleEndpoint` 설정과 짝을 맞춰
  * /api/copilotkit 단일 POST 엔드포인트로 agent run/info를 처리합니다.
@@ -17,7 +17,7 @@ export const runtime = "nodejs";
 const copilotRuntime = new CopilotRuntime({
   agents: {
     default: new BuiltInAgent({
-      model: "openai/gpt-4o-mini",
+      model: process.env.COPILOTKIT_MODEL ?? "openai/gpt-4o",
       apiKey: process.env.OPENAI_API_KEY,
     }),
   },

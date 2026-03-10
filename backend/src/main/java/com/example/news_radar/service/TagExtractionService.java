@@ -3,6 +3,8 @@ package com.example.news_radar.service;
 import com.example.news_radar.dto.RawNewsItem;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -32,8 +34,11 @@ public class TagExtractionService {
 
     private final ChatClient chatClient;
 
-    public TagExtractionService(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public TagExtractionService(ChatClient.Builder chatClientBuilder,
+                                @Value("${app.ai.model.processing}") String model) {
+        this.chatClient = chatClientBuilder
+                .defaultOptions(OpenAiChatOptions.builder().model(model).build())
+                .build();
     }
 
     /**
