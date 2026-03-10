@@ -3,10 +3,11 @@ name: Deploy Backend to EC2
 on:
   push:
     branches: [ "main" ]
-    # 백엔드 코드나 도커 설정이 바뀔 때만 작동하도록 설정
+    # 백엔드 코드, 도커 설정, 또는 워크플로우 변경 시 배포
     paths:
       - 'backend/**'
       - 'docker-compose.yml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:

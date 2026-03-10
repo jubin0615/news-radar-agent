@@ -39,7 +39,7 @@ function DashboardContent({ children }: DashboardLayoutProps) {
         return res.json();
       })
       .then((data) => setInitialized(data.initialized === true))
-      .catch(() => setInitialized(true)); // fallback: skip onboarding on error
+      .catch(() => setInitialized(false)); // fallback: 에러 시 온보딩 표시
   }, [authStatus]);
 
   const handleOnboardingComplete = useCallback(() => {
