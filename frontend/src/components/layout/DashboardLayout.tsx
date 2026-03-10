@@ -21,6 +21,7 @@ function DashboardContent({ children }: DashboardLayoutProps) {
   const { data: session, status: authStatus } = useSession();
   const router = useRouter();
   const [initialized, setInitialized] = useState<boolean | null>(null); // null = loading
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   // 미인증 사용자 → 로그인 페이지로 리다이렉트
   useEffect(() => {
@@ -33,13 +34,21 @@ function DashboardContent({ children }: DashboardLayoutProps) {
     // 인증 완료 후에만 시스템 상태 확인
     if (authStatus !== "authenticated") return;
 
+    setBackendError(null);
     fetch("/api/system/status", { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error("status check failed");
-        return res.json();
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          setBackendError("인증이 만료되었습니다. 페이지를 새로고침하고 다시 로그인해 주세요.");
+          setInitialized(false);
+          return;
+        }
+        if (!res.ok) throw new Error(`Backend ${res.status}`);
+        const data = await res.json();
+        setInitialized(data.initialized === true);
       })
-      .then((data) => setInitialized(data.initialized === true))
-      .catch(() => setInitialized(false)); // fallback: 에러 시 온보딩 표시
+      .catch(() => {
+        setInitialized(false); // fallback: 에러 시 온보딩 표시
+      });
   }, [authStatus]);
 
   const handleOnboardingComplete = useCallback(() => {
@@ -69,7 +78,7 @@ function DashboardContent({ children }: DashboardLayoutProps) {
   if (!initialized) {
     return (
       <AnimatePresence>
-        <OnboardingView onComplete={handleOnboardingComplete} />
+        <OnboardingView onComplete={handleOnboardingComplete} initialError={backendError} />
       </AnimatePresence>
     );
   }

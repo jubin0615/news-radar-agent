@@ -16,15 +16,16 @@ interface ProgressEvent {
 
 interface OnboardingViewProps {
   onComplete: () => void;
+  initialError?: string | null;
 }
 
 type Phase = "welcome" | "collecting" | "done" | "error";
 
-export default function OnboardingView({ onComplete }: OnboardingViewProps) {
-  const [phase, setPhase] = useState<Phase>("welcome");
+export default function OnboardingView({ onComplete, initialError }: OnboardingViewProps) {
+  const [phase, setPhase] = useState<Phase>(initialError ? "error" : "welcome");
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState(initialError || "");
   const [currentKeyword, setCurrentKeyword] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
 
@@ -44,8 +45,23 @@ export default function OnboardingView({ onComplete }: OnboardingViewProps) {
     setStatusMsg("초기화 요청 중...");
 
     fetch("/api/system/initialize", { method: "POST" })
-      .then((res) => {
-        if (!res.ok || !res.body) throw new Error("초기화 실패");
+      .then(async (res) => {
+        if (!res.ok || !res.body) {
+          // 응답 본문에서 실제 에러 메시지 추출
+          let detail = "";
+          try {
+            const body = await res.json();
+            detail = body.error || "";
+          } catch { /* ignore */ }
+
+          if (res.status === 401 || res.status === 403) {
+            throw new Error("인증이 만료되었습니다. 페이지를 새로고침하고 다시 로그인해 주세요.");
+          }
+          if (res.status === 502) {
+            throw new Error("백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해 주세요.");
+          }
+          throw new Error(detail || `서버 오류가 발생했습니다. (${res.status})`);
+        }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -53,7 +69,6 @@ export default function OnboardingView({ onComplete }: OnboardingViewProps) {
         function pump(): Promise<void> {
           return reader.read().then(({ done, value }) => {
             if (done) {
-              // 스트림이 끝났는데 아직 done이 아닌 경우 (정상 완료로 처리)
               setPhase((prev) => (prev === "collecting" ? "done" : prev));
               return;
             }
@@ -90,8 +105,8 @@ export default function OnboardingView({ onComplete }: OnboardingViewProps) {
 
         return pump();
       })
-      .catch(() => {
-        setErrorMsg("서버 연결에 실패했습니다. 백엔드 서버가 실행 중인지 확인해 주세요.");
+      .catch((err: Error) => {
+        setErrorMsg(err.message || "서버 연결에 실패했습니다. 백엔드 서버가 실행 중인지 확인해 주세요.");
         setPhase("error");
       });
   }, []);
