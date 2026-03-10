@@ -23,7 +23,7 @@ import java.util.List;
  *
  * - CSRF / Form Login / HTTP Basic 비활성화
  * - 세션 STATELESS (JWT 사용)
- * - /api/auth/**, /api/system/status, H2 콘솔 → 인증 없이 접근 허용
+ * - /api/auth/**, H2 콘솔 → 인증 없이 접근 허용
  * - 그 외 /api/** → 인증 필요
  * - JwtAuthenticationFilter를 UsernamePasswordAuthenticationFilter 앞에 등록
  */
@@ -49,8 +49,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 인증 API — 누구나 접근 가능
                 .requestMatchers("/api/auth/**").permitAll()
-                // 시스템 상태 확인 — 프론트엔드 온보딩에서 미인증 상태로 호출
-                .requestMatchers("/api/system/**").permitAll()
+                // 시스템 초기화/상태 — 인증된 사용자만 (사용자별 키워드 격리)
+                .requestMatchers("/api/system/**").authenticated()
                 // H2 콘솔 (개발 전용)
                 .requestMatchers("/h2-console/**").permitAll()
                 // 그 외 API — 인증 필요

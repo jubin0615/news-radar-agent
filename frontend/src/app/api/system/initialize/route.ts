@@ -3,16 +3,15 @@
  * POST /api/system/initialize → Java backend POST /api/system/initialize (SSE stream)
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/system/initialize`, {
+    const res = await backendFetch("/api/system/initialize", {
       method: "POST",
       headers: { Accept: "text/event-stream" },
-      cache: "no-store",
     });
 
     if (!res.ok || !res.body) {

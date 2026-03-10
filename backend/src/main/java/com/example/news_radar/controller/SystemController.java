@@ -7,6 +7,7 @@ import com.example.news_radar.service.CollectionProgressListener;
 import com.example.news_radar.service.SseProgressListener;
 import com.example.news_radar.dto.CollectionProgressEvent;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -38,13 +39,13 @@ public class SystemController {
      * 프론트엔드는 EventSource로 이 스트림을 구독하면 된다.
      */
     @PostMapping(value = "/initialize", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter initialize() {
-        log.info("[초기화] 온보딩 초기화 요청 수신");
+    public SseEmitter initialize(@AuthenticationPrincipal Long userId) {
+        log.info("[초기화] 온보딩 초기화 요청 수신: userId={}", userId);
 
-        // 1. 기본 키워드 등록
+        // 1. 기본 키워드 등록 (사용자별)
         List<String> registered = new ArrayList<>();
         for (String kw : DEFAULT_KEYWORDS) {
-            keywordService.addKeyword(kw).ifPresent(k -> registered.add(k.getName()));
+            keywordService.addKeyword(kw, userId).ifPresent(k -> registered.add(k.getName()));
         }
         log.info("[초기화] 기본 키워드 등록 완료: {}", registered);
 
@@ -78,8 +79,8 @@ public class SystemController {
      * 시스템 초기화 상태 확인 — 키워드가 하나라도 있으면 initialized
      */
     @GetMapping("/status")
-    public Map<String, Object> getSystemStatus() {
-        List<Keyword> keywords = keywordService.getAllKeywords();
+    public Map<String, Object> getSystemStatus(@AuthenticationPrincipal Long userId) {
+        List<Keyword> keywords = keywordService.getKeywordsByUser(userId);
         boolean initialized = !keywords.isEmpty();
         return Map.of(
                 "initialized", initialized,
