@@ -6,6 +6,7 @@ MERGE INTO CRAWLED_URL (URL, CREATED_AT) KEY(URL)
 SELECT N.URL, COALESCE(N.COLLECTED_AT, CURRENT_TIMESTAMP)
 FROM NEWS N
 WHERE N.URL IS NOT NULL;
+ON CONFLICT (url) DO NOTHING;
 
 -- ========================================
 -- Multi-user migration: 시스템 사용자 시드
