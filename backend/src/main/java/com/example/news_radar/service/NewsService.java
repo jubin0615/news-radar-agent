@@ -87,6 +87,10 @@ public class NewsService {
     private void notifyProgress(CollectionProgressEvent event) {
         for (CollectionProgressListener listener : progressListeners) {
             try {
+                // SSE 리스너는 사용자별 관련 이벤트만 전달
+                if (listener instanceof SseProgressListener sseListener) {
+                    if (!sseListener.isRelevant(event)) continue;
+                }
                 listener.onProgress(event);
             } catch (Exception e) {
                 log.warn("[Progress] 리스너 알림 실패: {}", e.getMessage());

@@ -20,4 +20,13 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     // 특정 사용자의 키워드 조회
     List<Keyword> findByUserId(Long userId);
+
+    // 사용자별 대소문자 무시 중복 확인
+    boolean existsByNameIgnoreCaseAndUserId(String name, Long userId);
+
+    // 사용자 소유 키워드 조회 (ID + userId)
+    Optional<Keyword> findByIdAndUserId(Long id, Long userId);
+
+    // 키워드 이름으로 해당 키워드를 등록한 모든 사용자의 엔티티 조회 (벡터 스토어 메타데이터용)
+    List<Keyword> findAllByNameIgnoreCase(String name);
 }

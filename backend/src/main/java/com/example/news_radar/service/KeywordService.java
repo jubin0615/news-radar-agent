@@ -3,9 +3,11 @@ package com.example.news_radar.service;
 import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.entity.KeywordStatus;
 import com.example.news_radar.entity.KeywordSynonym;
+import com.example.news_radar.entity.User;
 import com.example.news_radar.repository.KeywordRepository;
 import com.example.news_radar.repository.KeywordSynonymRepository;
 import com.example.news_radar.repository.NewsRepository;
+import com.example.news_radar.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,17 +26,97 @@ public class KeywordService {
     private final KeywordRepository keywordRepository;
     private final KeywordSynonymRepository keywordSynonymRepository;
     private final NewsRepository newsRepository;
+    private final UserRepository userRepository;
     private final NewsVectorStoreService newsVectorStoreService;
     private final KeywordSynonymRegistry synonymRegistry;
     private final OpenAiService openAiService;
 
-    // 전체 키워드 조회
+    // ─── 사용자별 키워드 조회 ───
+    @Transactional(readOnly = true)
+    public List<Keyword> getKeywordsByUser(Long userId) {
+        return keywordRepository.findByUserId(userId);
+    }
+
+    // ─── 사용자별 키워드 등록 ───
+    @Transactional
+    public Optional<Keyword> addKeyword(String name, Long userId) {
+        String normalized = normalize(name);
+        if (normalized.isBlank()) {
+            return Optional.empty();
+        }
+        // 같은 사용자 내에서 중복 체크
+        if (keywordRepository.existsByNameIgnoreCaseAndUserId(normalized, userId)) {
+            log.warn("키워드 등록 중복: user={}, keyword={}", userId, normalized);
+            return Optional.empty();
+        }
+        User user = userRepository.findById(userId).orElseThrow(
+                () -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + userId));
+        Keyword newKeyword = keywordRepository.save(new Keyword(normalized, user));
+        return Optional.of(newKeyword);
+    }
+
+    // ─── 사용자별 키워드 삭제 ───
+    @Transactional
+    public boolean deleteKeyword(Long id, Long userId) {
+        Optional<Keyword> target = keywordRepository.findByIdAndUserId(id, userId);
+        if (target.isEmpty()) {
+            return false;
+        }
+        Keyword keyword = target.get();
+        int deactivated = newsRepository.deactivateByKeyword(keyword.getName());
+        keywordRepository.deleteById(id);
+        log.info("키워드 삭제 완료: userId={}, id={}, name={}, deactivatedNews={}", userId, id, keyword.getName(), deactivated);
+        triggerVectorStoreRebuildAsync();
+        return true;
+    }
+
+    // ─── 사용자별 상태 변경 ───
+    @Transactional
+    public Optional<Keyword> setStatus(Long id, KeywordStatus newStatus, Long userId) {
+        return keywordRepository.findByIdAndUserId(id, userId).map(keyword -> {
+            KeywordStatus oldStatus = keyword.getStatus();
+
+            if (oldStatus == newStatus) {
+                log.debug("키워드 상태 변경 없음: id={}, status={}", id, newStatus);
+                return keyword;
+            }
+
+            keyword.setStatus(newStatus);
+            Keyword saved = keywordRepository.save(keyword);
+
+            if (newStatus == KeywordStatus.ARCHIVED) {
+                int deactivated = newsRepository.deactivateByKeyword(saved.getName());
+                log.info("키워드 아카이브: id={}, name={}, deactivatedNews={}", id, saved.getName(), deactivated);
+            }
+
+            if (newStatus == KeywordStatus.ACTIVE && oldStatus != KeywordStatus.ACTIVE) {
+                int reactivated = newsRepository.reactivateByKeyword(saved.getName());
+                if (reactivated > 0) {
+                    log.info("키워드 재활성화: id={}, name={}, reactivatedNews={}", id, saved.getName(), reactivated);
+                }
+            }
+
+            log.info("키워드 상태 변경: id={}, name={}, {} → {}", id, saved.getName(), oldStatus, newStatus);
+
+            if (oldStatus == KeywordStatus.ACTIVE || newStatus == KeywordStatus.ACTIVE) {
+                triggerVectorStoreRebuildAsync();
+            }
+
+            return saved;
+        });
+    }
+
+    // ═══════════════════════════════════════════════
+    // 기존 메서드 — 내부 서비스(크롤러, 시스템 초기화 등)에서 사용
+    // ═══════════════════════════════════════════════
+
+    // 전체 키워드 조회 (내부용 — 크롤러, 시스템 상태 확인 등)
     @Transactional(readOnly=true)
     public List<Keyword> getAllKeywords() {
         return keywordRepository.findAll();
     }
 
-    // 키워드 등록
+    // 키워드 등록 (내부용 — 시스템 초기화 등, 사용자 없이 등록)
     @Transactional
     public Optional<Keyword> addKeyword(String name) {
         String normalized = normalize(name);
@@ -52,7 +134,7 @@ public class KeywordService {
     }
 
     /**
-     * 키워드 영구 삭제 (하드 삭제).
+     * 키워드 영구 삭제 (하드 삭제). — 내부용
      * 연결된 뉴스를 소프트 삭제 후 키워드 레코드를 제거하고 벡터 스토어를 재빌드합니다.
      */
     @Transactional
@@ -64,15 +146,15 @@ public class KeywordService {
         Keyword keyword = target.get();
         int deactivated = newsRepository.deactivateByKeyword(keyword.getName());
         keywordRepository.deleteById(id);
-    
+
         log.info("키워드 삭제 완료: id={}, name={}, deactivatedNews={}", id, keyword.getName(), deactivated);
-        
+
         triggerVectorStoreRebuildAsync();
         return true;
     }
 
     /**
-     * 키워드 상태 전환.
+     * 키워드 상태 전환. — 내부용
      *
      * 전환 규칙:
      *   → PAUSED   : 수집 중단, 기존 뉴스는 RDB에 보존 (소프트 삭제 없음)

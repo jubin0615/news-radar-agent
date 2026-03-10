@@ -54,6 +54,21 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     @Query("SELECT n FROM News n WHERE n.isActive = true ORDER BY n.importanceScore DESC")
     List<News> findAllByScore();
 
+    // ── 사용자별 키워드 목록 기반 조회 ───────────────────────────
+    // 중요도 순 조회 (사용자의 키워드만)
+    @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords ORDER BY n.importanceScore DESC")
+    List<News> findByKeywordInOrderByScore(List<String> keywords);
+
+    // 날짜 + 키워드 목록 필터
+    @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords AND n.collectedAt BETWEEN :start AND :end ORDER BY n.importanceScore DESC NULLS LAST")
+    List<News> findByKeywordInAndCollectedAtBetween(List<String> keywords, LocalDateTime start, LocalDateTime end);
+
+    // 최근 N시간 이내 브리핑 (사용자의 키워드만)
+    @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords " +
+           "AND n.collectedAt >= :since " +
+           "ORDER BY n.importanceScore DESC NULLS LAST, n.collectedAt DESC")
+    List<News> findRecentBriefingNewsByKeywords(List<String> keywords, LocalDateTime since);
+
     // 날짜 범위로 조회 (일간 리포트용, 활성만)
     @Query("SELECT n FROM News n WHERE n.isActive = true AND n.collectedAt BETWEEN :start AND :end ORDER BY n.importanceScore DESC NULLS LAST")
     List<News> findByCollectedAtBetween(LocalDateTime start, LocalDateTime end);
@@ -83,6 +98,18 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "AND n.importanceScore >= :minImportanceScore " +
            "ORDER BY n.timelinessScore DESC NULLS LAST, n.importanceScore DESC")
     List<News> findTrendNews(int minImportanceScore, Pageable pageable);
+
+    // 트렌드 브리핑 (사용자 키워드 기반)
+    @Query("SELECT n FROM News n WHERE n.isActive = true " +
+           "AND n.keyword IN :keywords " +
+           "AND n.importanceScore >= :minImportanceScore " +
+           "ORDER BY n.timelinessScore DESC NULLS LAST, n.importanceScore DESC")
+    List<News> findTrendNewsByKeywords(List<String> keywords, int minImportanceScore, Pageable pageable);
+
+    // 날짜 범위 + 키워드 목록 (사용자별 일일 리포트)
+    @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords " +
+           "AND n.collectedAt BETWEEN :start AND :end ORDER BY n.importanceScore DESC NULLS LAST")
+    List<News> findByKeywordsAndCollectedAtBetween(List<String> keywords, LocalDateTime start, LocalDateTime end);
 
     // 최근 N시간 이내 브리핑용: 중요도 순 → 최신순 정렬 (활성만)
     @Query("SELECT n FROM News n WHERE n.isActive = true " +
