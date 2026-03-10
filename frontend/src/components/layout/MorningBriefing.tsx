@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ExternalLink, Star, Radio, Zap, Brain, Tag } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 import type { NewsItem, NewsGrade } from "@/types";
 
 // ── Grade configuration ───────────────────────────────────────── //
@@ -319,7 +320,7 @@ export default function MorningBriefing() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/news")
+    apiFetch("/api/news")
       .then((r) => r.json())
       .then((data: unknown) => {
         if (Array.isArray(data)) {

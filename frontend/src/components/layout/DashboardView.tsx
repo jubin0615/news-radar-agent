@@ -7,6 +7,7 @@ import FloatingGuide from "./FloatingGuide";
 import DashboardHUD from "./DashboardHUD";
 import AiBriefingSwipeCards from "./AiBriefingSwipeCards";
 import KeywordMap from "./KeywordMap";
+import { apiFetch } from "@/lib/api-fetch";
 import { useNavigation } from "@/lib/NavigationContext";
 import type { NewsItem } from "@/types";
 
@@ -140,7 +141,7 @@ export default function DashboardView() {
     let unmounted = false;
     const fetchData = async () => {
       try {
-        const res = await fetch("/api/news/collection-status", { cache: "no-store" });
+        const res = await apiFetch("/api/news/collection-status", { cache: "no-store" });
         if (res.ok) {
           const data: DashboardStats = await res.json();
           if (unmounted) return;

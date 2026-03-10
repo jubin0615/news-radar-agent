@@ -1,21 +1,18 @@
 /**
- * BFF API Route — Keywords proxy
+ * BFF API Route — Keywords proxy (인증 토큰 자동 전달)
  *
  * GET    /api/keywords            → Java backend GET  /api/keywords
  * POST   /api/keywords?name=AI    → Java backend POST /api/keywords?name=AI
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
 /** 전체 키워드 목록 조회 */
 export async function GET() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/keywords`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await backendFetch("/api/keywords");
 
     if (!res.ok) {
       return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
@@ -37,12 +34,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const res = await fetch(
-      `${BACKEND_URL}/api/keywords?name=${encodeURIComponent(name)}`,
-      {
-        method: "POST",
-        headers: { Accept: "application/json" },
-      },
+    const res = await backendFetch(
+      `/api/keywords?name=${encodeURIComponent(name)}`,
+      { method: "POST" },
     );
 
     if (!res.ok) {

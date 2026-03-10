@@ -21,6 +21,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { apiFetch } from "@/lib/api-fetch";
 import { useNavigation } from "@/lib/NavigationContext";
 import { useCollectionSSE } from "@/hooks/useCollectionSSE";
 import type { NewsItem, NewsGrade } from "@/types";
@@ -158,7 +159,7 @@ export default function NewsCollectionView({ className }: { className?: string }
         : keyword
           ? `/api/news?keyword=${encodeURIComponent(keyword)}`
           : "/api/news";
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await apiFetch(url, { signal: controller.signal });
       if (!res.ok) {
         setNews([]);
         return;
@@ -191,7 +192,7 @@ export default function NewsCollectionView({ className }: { className?: string }
   // ── Fetch collection status ──
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/news/collection-status");
+      const res = await apiFetch("/api/news/collection-status");
       if (res.ok) {
         const data: CollectionStatus = await res.json();
         setStatus(data);

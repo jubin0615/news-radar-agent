@@ -2,6 +2,8 @@
 
 import { ReactNode, useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout";
 import Header from "@/components/layout/Header";
 import { NavigationProvider, useNavigation } from "@/lib/NavigationContext";
@@ -16,9 +18,21 @@ interface DashboardLayoutProps {
 
 function DashboardContent({ children }: DashboardLayoutProps) {
   const { activeTab } = useNavigation();
+  const { data: session, status: authStatus } = useSession();
+  const router = useRouter();
   const [initialized, setInitialized] = useState<boolean | null>(null); // null = loading
 
+  // 미인증 사용자 → 로그인 페이지로 리다이렉트
   useEffect(() => {
+    if (authStatus === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [authStatus, router]);
+
+  useEffect(() => {
+    // 인증 완료 후에만 시스템 상태 확인
+    if (authStatus !== "authenticated") return;
+
     fetch("/api/system/status", { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error("status check failed");
@@ -26,14 +40,14 @@ function DashboardContent({ children }: DashboardLayoutProps) {
       })
       .then((data) => setInitialized(data.initialized === true))
       .catch(() => setInitialized(true)); // fallback: skip onboarding on error
-  }, []);
+  }, [authStatus]);
 
   const handleOnboardingComplete = useCallback(() => {
     setInitialized(true);
   }, []);
 
-  // System status loading
-  if (initialized === null) {
+  // Auth loading or system status loading
+  if (authStatus === "loading" || authStatus === "unauthenticated" || initialized === null) {
     return (
       <div
         className="flex h-screen w-screen items-center justify-center"

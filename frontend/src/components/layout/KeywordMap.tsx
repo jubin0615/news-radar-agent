@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Newspaper, TrendingUp, Clock, ExternalLink } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 import type { NewsItem } from "@/types";
 
 // ── Types ────────────────────────────────────────────────────── //
@@ -587,7 +588,7 @@ export default function KeywordMap({
   useEffect(() => {
     const fetchKeywords = async () => {
       try {
-        const res = await fetch("/api/keywords");
+        const res = await apiFetch("/api/keywords");
         if (!res.ok) return;
         const data: Keyword[] = await res.json();
         const active = data.filter((k) => k.status === "ACTIVE");
@@ -598,7 +599,7 @@ export default function KeywordMap({
         let allNews: NewsItem[] = [];
 
         if (!cache.has("__all") || now - cache.get("__all")!.ts > 30_000) {
-          const newsRes = await fetch("/api/news");
+          const newsRes = await apiFetch("/api/news");
           if (newsRes.ok) {
             allNews = await newsRes.json();
             cache.set("__all", { news: allNews, ts: now });

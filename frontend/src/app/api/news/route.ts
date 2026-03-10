@@ -1,11 +1,12 @@
 /**
- * BFF API Route — News proxy
+ * BFF API Route — News proxy (인증 토큰 자동 전달)
  *
  * Proxies news API calls to the Java backend (localhost:8081)
  * and normalises the response to match the frontend NewsItem type.
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
+
 const LOW_GRADE_MAX_SCORE = 39;
 
 export const runtime = "nodejs";
@@ -32,16 +33,13 @@ export async function GET(req: Request) {
   const date = searchParams.get("date");
 
   const backendPath = date
-    ? `${BACKEND_URL}/api/news?date=${encodeURIComponent(date)}`
+    ? `/api/news?date=${encodeURIComponent(date)}`
     : keyword
-      ? `${BACKEND_URL}/api/news/search?keyword=${encodeURIComponent(keyword)}`
-      : `${BACKEND_URL}/api/news`;
+      ? `/api/news/search?keyword=${encodeURIComponent(keyword)}`
+      : `/api/news`;
 
   try {
-    const res = await fetch(backendPath, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await backendFetch(backendPath);
 
     if (!res.ok) {
       return Response.json({ error: `Backend ${res.status}` }, { status: res.status });

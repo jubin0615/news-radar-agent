@@ -1,5 +1,5 @@
 /**
- * BFF API Route — Report proxy
+ * BFF API Route — Report proxy (인증 토큰 자동 전달)
  *
  * GET  /api/report?keyword=AI&date=2026-02-19  →  Java backend GET /api/reports
  * POST /api/report                              →  Java backend POST /api/reports/daily
@@ -7,7 +7,7 @@
  * 백엔드가 Hard Cutoff를 수행하므로 프론트엔드에서의 추가 필터링은 불필요합니다.
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
@@ -22,10 +22,7 @@ export async function GET(req: Request) {
   if (date) qs.set("date", date);
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/reports?${qs}`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await backendFetch(`/api/reports?${qs}`);
 
     if (!res.ok) return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
     return Response.json(await res.json());
@@ -37,11 +34,7 @@ export async function GET(req: Request) {
 /** Generate a new daily report */
 export async function POST() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/reports/daily`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await backendFetch("/api/reports/daily", { method: "POST" });
 
     if (!res.ok) return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
     return Response.json(await res.json());

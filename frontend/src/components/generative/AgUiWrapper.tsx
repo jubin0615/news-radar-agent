@@ -44,6 +44,7 @@ import {
   Brain,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { apiFetch } from "@/lib/api-fetch";
 import NewsCarousel from "./NewsCarousel";
 import ReportViewer from "./ReportViewer";
 import RagAnswerCard, { type RagAnswerData } from "./RagAnswerCard";
@@ -210,7 +211,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
 
   /* ── System status load ── */
   useEffect(() => {
-    fetch("/api/news/collection-status")
+    apiFetch("/api/news/collection-status")
       .then(async (r) => {
         if (!r.ok) return null;
         const json = (await r.json()) as unknown;
@@ -255,7 +256,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
     ],
     handler: async ({ keyword }: { keyword?: string }) => {
       const qs = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";
-      const res = await fetch(`/api/news${qs}`);
+      const res = await apiFetch(`/api/news${qs}`);
       if (!res.ok) throw new Error(`뉴스 검색 실패 (${res.status})`);
       return (await res.json()) as NewsItem[];
     },
@@ -294,7 +295,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
       "인터넷에서 등록된 키워드로 최신 뉴스를 크롤링해 수집합니다.",
     parameters: [],
     handler: async () => {
-      const res = await fetch("/api/news/collect", { method: "POST" });
+      const res = await apiFetch("/api/news/collect", { method: "POST" });
       if (!res.ok) throw new Error(`수집 요청 실패 (${res.status})`);
       return await res.text();
     },
@@ -332,7 +333,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
       },
     ],
     handler: async ({ question }: { question: string }) => {
-      const res = await fetch("/api/chat/rag", {
+      const res = await apiFetch("/api/chat/rag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
@@ -370,7 +371,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
       "'트렌드', 'AI 트렌드', '오늘의 트렌드' 등의 요청에 사용하세요.",
     parameters: [],
     handler: async () => {
-      const res = await fetch("/api/chat/trend-briefing", {
+      const res = await apiFetch("/api/chat/trend-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -405,7 +406,7 @@ export default function AgUiWrapper({ className }: { className?: string }) {
       "수집·분석된 뉴스를 종합해 일일 브리핑 리포트를 생성합니다.",
     parameters: [],
     handler: async () => {
-      const res = await fetch("/api/report", { method: "POST" });
+      const res = await apiFetch("/api/report", { method: "POST" });
       if (!res.ok) throw new Error(`리포트 생성 실패 (${res.status})`);
       return (await res.json()) as BackendReport;
     },

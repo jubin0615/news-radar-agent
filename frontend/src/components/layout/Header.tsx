@@ -1,6 +1,7 @@
 "use client";
 
-import { Activity, Wifi } from "lucide-react";
+import { Activity, Wifi, LogOut, User } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
 import { useNavigation, type TabId } from "@/lib/NavigationContext";
 
 const tabTitles: Record<TabId, string> = {
@@ -11,6 +12,7 @@ const tabTitles: Record<TabId, string> = {
 
 export default function Header() {
   const { activeTab } = useNavigation();
+  const { data: session } = useSession();
 
   return (
     <header
@@ -40,7 +42,7 @@ export default function Header() {
         </span>
       </div>
 
-      {/* Right — status indicators */}
+      {/* Right — status indicators + user */}
       <div className="flex items-center gap-3">
         {/* Activity pulse */}
         <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: "var(--glass-bg)" }}>
@@ -50,6 +52,35 @@ export default function Header() {
           </span>
         </div>
 
+        {/* User info + logout */}
+        {session?.user && (
+          <div
+            className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+            style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
+          >
+            {session.user.image ? (
+              <img
+                src={session.user.image}
+                alt=""
+                className="h-5 w-5 rounded-full"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <User size={13} style={{ color: "var(--neon-purple)" }} strokeWidth={2} />
+            )}
+            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+              {session.user.name ?? session.user.email}
+            </span>
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="ml-1 flex items-center justify-center rounded-md p-1 transition-colors hover:bg-[rgba(239,68,68,0.12)]"
+              style={{ color: "var(--text-muted)" }}
+              title="로그아웃"
+            >
+              <LogOut size={12} strokeWidth={2} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

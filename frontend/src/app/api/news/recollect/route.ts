@@ -1,12 +1,12 @@
 /**
- * BFF API Route — Keyword news re-collection
+ * BFF API Route — Keyword news re-collection (인증 토큰 자동 전달)
  *
  * POST /api/news/recollect?keyword=AI
  *   → Java backend POST /api/news/recollect?keyword=AI
  *   → 기존 뉴스 소프트 삭제 후 백그라운드 신규 수집 시작 (즉시 반환)
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
@@ -19,12 +19,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const res = await fetch(
-      `${BACKEND_URL}/api/news/recollect?keyword=${encodeURIComponent(keyword)}`,
-      {
-        method: "POST",
-        headers: { Accept: "application/json" },
-      },
+    const res = await backendFetch(
+      `/api/news/recollect?keyword=${encodeURIComponent(keyword)}`,
+      { method: "POST" },
     );
 
     if (!res.ok) {

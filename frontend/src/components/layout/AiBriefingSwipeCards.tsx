@@ -9,6 +9,7 @@ import {
   type PanInfo,
 } from "framer-motion";
 import { Brain, Newspaper, Tag, Sparkles, ChevronLeft, ChevronRight, MousePointerClick, Radar } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 import type { NewsItem, NewsGrade } from "@/types";
 
 // ── Grade config ─────────────────────────────────────────────── //
@@ -271,7 +272,7 @@ export default function AiBriefingSwipeCards({
   const fetchCards = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
     try {
-      const res = await fetch("/api/news/briefing?hours=48&limit=5", { cache: "no-store" });
+      const res = await apiFetch("/api/news/briefing?hours=48&limit=5", { cache: "no-store" });
       if (!res.ok) return;
 
       const data: NewsItem[] = await res.json();

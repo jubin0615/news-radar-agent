@@ -1,11 +1,12 @@
 /**
- * BFF API Route - Briefing proxy with resilient fallback.
+ * BFF API Route - Briefing proxy with resilient fallback. (인증 토큰 자동 전달)
  *
  * Primary: Java backend `/api/news/briefing`.
  * Fallback: Java backend `/api/news` + local filtering/sorting for recent major news.
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
+
 const DEFAULT_HOURS = 48;
 const DEFAULT_LIMIT = 5;
 const LOW_GRADE_MAX_SCORE = 39;
@@ -58,13 +59,10 @@ export async function GET(req: Request) {
   const hours = toPositiveInt(searchParams.get("hours"), DEFAULT_HOURS);
   const limit = toPositiveInt(searchParams.get("limit"), DEFAULT_LIMIT);
 
-  const briefingPath = `${BACKEND_URL}/api/news/briefing?hours=${encodeURIComponent(String(hours))}&limit=${encodeURIComponent(String(limit))}`;
-
   try {
-    const briefingRes = await fetch(briefingPath, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const briefingRes = await backendFetch(
+      `/api/news/briefing?hours=${encodeURIComponent(String(hours))}&limit=${encodeURIComponent(String(limit))}`,
+    );
 
     if (briefingRes.ok) {
       const data = await briefingRes.json();
@@ -72,10 +70,7 @@ export async function GET(req: Request) {
     }
 
     // Fallback path: backend may be older build without /api/news/briefing.
-    const allNewsRes = await fetch(`${BACKEND_URL}/api/news`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const allNewsRes = await backendFetch("/api/news");
     if (!allNewsRes.ok) {
       return Response.json({ error: `Backend ${briefingRes.status}` }, { status: briefingRes.status });
     }

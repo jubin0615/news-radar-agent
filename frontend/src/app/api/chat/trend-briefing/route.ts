@@ -1,24 +1,20 @@
 /**
- * BFF API Route — Trend Briefing proxy
+ * BFF API Route — Trend Briefing proxy (인증 토큰 자동 전달)
  *
  * POST /api/chat/trend-briefing
  * → Java backend POST /api/chat/trend-briefing
  * ← { answer: string, sources: RagSourceItem[] }
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/chat/trend-briefing`, {
+    const res = await backendFetch("/api/chat/trend-briefing", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
     });
 
     if (!res.ok) {

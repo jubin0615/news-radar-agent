@@ -1,11 +1,11 @@
 /**
- * BFF API Route — Single keyword operations
+ * BFF API Route — Single keyword operations (인증 토큰 자동 전달)
  *
  * DELETE /api/keywords/[id]                   → backend DELETE /api/keywords/:id
  * PATCH  /api/keywords/[id]?status=PAUSED     → backend PATCH  /api/keywords/:id/status?status=PAUSED
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
@@ -17,9 +17,7 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/keywords/${id}`, {
-      method: "DELETE",
-    });
+    const res = await backendFetch(`/api/keywords/${id}`, { method: "DELETE" });
 
     if (!res.ok) {
       return Response.json({ error: `Backend ${res.status}` }, { status: res.status });
@@ -48,12 +46,9 @@ export async function PATCH(
   }
 
   try {
-    const res = await fetch(
-      `${BACKEND_URL}/api/keywords/${id}/status?status=${encodeURIComponent(status)}`,
-      {
-        method: "PATCH",
-        headers: { Accept: "application/json" },
-      },
+    const res = await backendFetch(
+      `/api/keywords/${id}/status?status=${encodeURIComponent(status)}`,
+      { method: "PATCH" },
     );
 
     if (!res.ok) {

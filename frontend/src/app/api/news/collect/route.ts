@@ -1,19 +1,16 @@
 /**
- * BFF API Route — News collect proxy
+ * BFF API Route — News collect proxy (인증 토큰 자동 전달)
  *
  * POST /api/news/collect → Java backend POST /api/news/collect
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/news/collect`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-    });
+    const res = await backendFetch("/api/news/collect", { method: "POST" });
 
     if (!res.ok) {
       return Response.json({ error: `Backend ${res.status}` }, { status: res.status });

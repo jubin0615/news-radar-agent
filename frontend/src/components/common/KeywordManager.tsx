@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from "re
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Search, Hash, Loader2, Power, RefreshCw, Archive, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { apiFetch } from "@/lib/api-fetch";
 import { useNavigation } from "@/lib/NavigationContext";
 
 // ── Types ────────────────────────────────────────────────────── //
@@ -73,7 +74,7 @@ export default function KeywordManager({
   const fetchKeywords = useCallback(async (showLoader = false) => {
     if (showLoader) setIsLoading(true);
     try {
-      const res = await fetch("/api/keywords");
+      const res = await apiFetch("/api/keywords");
       if (res.ok) setKeywords(await res.json());
     } catch {
       /* ignore */
@@ -122,7 +123,7 @@ export default function KeywordManager({
       setInput(""); return;
     }
     try {
-      const res = await fetch(`/api/keywords?name=${encodeURIComponent(trimmed)}`, { method: "POST" });
+      const res = await apiFetch(`/api/keywords?name=${encodeURIComponent(trimmed)}`, { method: "POST" });
       if (res.ok) {
         const newKw: Keyword = await res.json();
         setKeywords((prev) => [...prev, newKw]);
@@ -134,7 +135,7 @@ export default function KeywordManager({
   const removeKeyword = useCallback(async (id: number) => {
     setKeywords((prev) => prev.filter((k) => k.id !== id));
     try {
-      await fetch(`/api/keywords/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/keywords/${id}`, { method: "DELETE" });
     } catch {
       void fetchKeywords(false);
     }
@@ -147,7 +148,7 @@ export default function KeywordManager({
       prev.map((k) => (k.id === id ? { ...k, status: newStatus } : k)),
     );
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/keywords/${id}?status=${newStatus}`,
         { method: "PATCH" },
       );
@@ -176,7 +177,7 @@ export default function KeywordManager({
     setRecollectingIds((prev) => new Set(prev).add(keyword.id));
     showToast(`"${keyword.name}" 기존 뉴스가 보관 처리되고 백그라운드에서 새로운 뉴스 수집을 시작합니다.`);
     try {
-      await fetch(`/api/news/recollect?keyword=${encodeURIComponent(keyword.name)}`, { method: "POST" });
+      await apiFetch(`/api/news/recollect?keyword=${encodeURIComponent(keyword.name)}`, { method: "POST" });
     } catch { /* ignore */ }
     finally {
       setRecollectingIds((prev) => { const next = new Set(prev); next.delete(keyword.id); return next; });

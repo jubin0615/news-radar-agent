@@ -1,19 +1,18 @@
 /**
- * BFF API Route — SSE proxy for news collection progress
+ * BFF API Route — SSE proxy for news collection progress (인증 토큰 자동 전달)
  *
  * GET /api/news/collect/stream → Java backend GET /api/news/collect/stream
  * SSE 스트림을 투명하게 프록시합니다.
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8081";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/news/collect/stream`, {
+    const res = await backendFetch("/api/news/collect/stream", {
       headers: { Accept: "text/event-stream" },
-      cache: "no-store",
     });
 
     if (!res.ok || !res.body) {
