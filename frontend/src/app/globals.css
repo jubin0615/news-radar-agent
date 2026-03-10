@@ -1240,37 +1240,35 @@
 .login-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.35;
+  filter: blur(80px);
   pointer-events: none;
 }
 
 .login-orb-blue {
-  width: 400px;
-  height: 400px;
-  background: var(--neon-blue);
-  top: -10%;
-  left: -5%;
+  width: 500px;
+  height: 500px;
+  background: rgba(0, 212, 255, 0.5);
+  top: -15%;
+  left: -10%;
   animation: loginOrbFloat1 8s ease-in-out infinite;
 }
 
 .login-orb-purple {
-  width: 350px;
-  height: 350px;
-  background: var(--neon-purple);
-  bottom: -10%;
-  right: -5%;
+  width: 450px;
+  height: 450px;
+  background: rgba(168, 85, 247, 0.45);
+  bottom: -15%;
+  right: -10%;
   animation: loginOrbFloat2 10s ease-in-out infinite;
 }
 
 .login-orb-cyan {
-  width: 250px;
-  height: 250px;
-  background: #06b6d4;
+  width: 300px;
+  height: 300px;
+  background: rgba(6, 182, 212, 0.3);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  opacity: 0.15;
   animation: loginOrbFloat3 12s ease-in-out infinite;
 }
 
@@ -1301,10 +1299,11 @@
 
 .login-particle {
   position: absolute;
-  width: 2px;
-  height: 2px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: var(--neon-blue);
+  box-shadow: 0 0 6px currentColor;
   opacity: 0;
   animation: loginParticleRise linear infinite;
 }
@@ -1343,13 +1342,14 @@
 
 /* ── Glassmorphic card ── */
 .login-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   box-shadow:
-    0 0 60px rgba(0, 212, 255, 0.06),
-    0 0 120px rgba(168, 85, 247, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 0 80px rgba(0, 212, 255, 0.12),
+    0 0 160px rgba(168, 85, 247, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: loginCardAppear 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -1386,13 +1386,15 @@
     var(--neon-purple),
     var(--neon-blue)
   );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   animation: loginLogoSpin 4s linear infinite;
 }
 
 @keyframes loginLogoSpin {
-  to { rotate: 360deg; }
+  to { transform: rotate(360deg); }
 }
 
 .login-logo-inner {
@@ -1402,14 +1404,14 @@
   align-items: center;
   justify-content: center;
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(168, 85, 247, 0.12));
-  box-shadow: 0 0 40px rgba(0, 212, 255, 0.15);
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.18), rgba(168, 85, 247, 0.18));
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);
   animation: loginLogoPulse 3s ease-in-out infinite;
 }
 
 @keyframes loginLogoPulse {
-  0%, 100% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.15); }
-  50% { box-shadow: 0 0 50px rgba(0, 212, 255, 0.25), 0 0 80px rgba(168, 85, 247, 0.1); }
+  0%, 100% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.2); }
+  50% { box-shadow: 0 0 60px rgba(0, 212, 255, 0.35), 0 0 100px rgba(168, 85, 247, 0.15); }
 }
 
 /* ── Login buttons ── */
@@ -1433,9 +1435,9 @@
 }
 
 .login-btn:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 212, 255, 0.08);
 }
 
 .login-btn:active {
@@ -1456,9 +1458,9 @@
 }
 
 .login-btn-glow-blue {
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 212, 255, 0.02));
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(0, 212, 255, 0.03));
 }
 
 .login-btn-glow-purple {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(168, 85, 247, 0.02));
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(168, 85, 247, 0.03));
 }
