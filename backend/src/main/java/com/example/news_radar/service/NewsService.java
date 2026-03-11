@@ -19,8 +19,12 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
@@ -178,25 +182,45 @@ public class NewsService {
                     .map(Keyword::getName)
                     .collect(Collectors.toList());
 
-            int totalSaved = 0;
-            for (int i = 0; i < activeKeywords.size(); i++) {
-                Keyword keyword = activeKeywords.get(i);
-                int basePercent = (i * 100) / totalKeywords;
+            // 키워드 병렬 수집 (최대 2개 동시 실행 — OpenAI API 부하 제한)
+            AtomicInteger completedCount = new AtomicInteger(0);
+            AtomicInteger totalSavedAtomic = new AtomicInteger(0);
+            ExecutorService parallelExecutor = Executors.newFixedThreadPool(2, r -> {
+                Thread t = new Thread(r, "keyword-parallel");
+                t.setDaemon(true);
+                return t;
+            });
 
-                notifyProgress(new CollectionProgressEvent(
-                        "KEYWORD_BEGIN", keyword.getName(),
-                        String.format("키워드 '%s' 수집 시작 (%d/%d)", keyword.getName(), i + 1, totalKeywords),
-                        i, totalKeywords, basePercent, null));
+            try {
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+                for (int i = 0; i < activeKeywords.size(); i++) {
+                    final int idx = i;
+                    final Keyword keyword = activeKeywords.get(i);
 
-                int saved = collectAndSaveForKeyword(keyword.getName(), keywordNames, i, totalKeywords);
-                totalSaved += saved;
+                    futures.add(CompletableFuture.runAsync(() -> {
+                        notifyProgress(new CollectionProgressEvent(
+                                "KEYWORD_BEGIN", keyword.getName(),
+                                String.format("키워드 '%s' 수집 시작", keyword.getName()),
+                                idx, totalKeywords, (idx * 100) / totalKeywords, null));
 
-                int endPercent = ((i + 1) * 100) / totalKeywords;
-                notifyProgress(new CollectionProgressEvent(
-                        "KEYWORD_COMPLETE", keyword.getName(),
-                        String.format("키워드 '%s' 수집 완료. %d건 저장", keyword.getName(), saved),
-                        i + 1, totalKeywords, endPercent, saved));
+                        int saved = collectAndSaveForKeyword(keyword.getName(), keywordNames, idx, totalKeywords);
+                        totalSavedAtomic.addAndGet(saved);
+
+                        int completed = completedCount.incrementAndGet();
+                        int percent = (completed * 100) / totalKeywords;
+                        notifyProgress(new CollectionProgressEvent(
+                                "KEYWORD_COMPLETE", keyword.getName(),
+                                String.format("키워드 '%s' 수집 완료. %d건 저장", keyword.getName(), saved),
+                                completed, totalKeywords, percent, saved));
+                    }, parallelExecutor));
+                }
+
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            } finally {
+                parallelExecutor.shutdown();
             }
+
+            int totalSaved = totalSavedAtomic.get();
 
             lastCollectedAt = LocalDateTime.now();
             notifyProgress(new CollectionProgressEvent(
