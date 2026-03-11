@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
  *   필요하다면 'ALTER TABLE keyword DROP COLUMN enabled;' 를 수동 실행하세요.
  */
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"name", "user_id"}))
 @Getter @Setter
 @NoArgsConstructor
 public class Keyword {
@@ -29,7 +30,7 @@ public class Keyword {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false)
     private String name;
 
     @Enumerated(EnumType.STRING)
