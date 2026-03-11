@@ -87,4 +87,28 @@ public class SystemController {
                 "keywordCount", keywords.size()
         );
     }
+
+    /**
+     * DELETE /api/system/reset
+     * 사용자 데이터 초기화 — 키워드(동의어 포함) + 관련 뉴스 소프트 삭제 → 온보딩 재진입
+     */
+    @DeleteMapping("/reset")
+    public ResponseEntity<Map<String, Object>> resetUserData(@AuthenticationPrincipal Long userId) {
+        log.info("[리셋] 사용자 데이터 초기화 요청: userId={}", userId);
+
+        List<Keyword> keywords = keywordService.getKeywordsByUser(userId);
+        int keywordCount = keywords.size();
+
+        // deleteKeyword 내부에서 뉴스 소프트 삭제 + 벡터 스토어 재빌드 처리
+        for (Keyword kw : keywords) {
+            keywordService.deleteKeyword(kw.getId(), userId);
+        }
+
+        log.info("[리셋] 완료: userId={}, deletedKeywords={}", userId, keywordCount);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "사용자 데이터가 초기화되었습니다. 새로고침하면 온보딩이 다시 시작됩니다.",
+                "deletedKeywords", keywordCount
+        ));
+    }
 }
