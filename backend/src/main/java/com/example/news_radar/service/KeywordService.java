@@ -64,6 +64,7 @@ public class KeywordService {
         }
         Keyword keyword = target.get();
         int deactivated = newsRepository.deactivateByKeyword(keyword.getName());
+        keywordSynonymRepository.deleteByKeyword(keyword);
         keywordRepository.deleteById(id);
         log.info("키워드 삭제 완료: userId={}, id={}, name={}, deactivatedNews={}", userId, id, keyword.getName(), deactivated);
         triggerVectorStoreRebuildAsync();
@@ -145,6 +146,7 @@ public class KeywordService {
         }
         Keyword keyword = target.get();
         int deactivated = newsRepository.deactivateByKeyword(keyword.getName());
+        keywordSynonymRepository.deleteByKeyword(keyword);
         keywordRepository.deleteById(id);
 
         log.info("키워드 삭제 완료: id={}, name={}, deactivatedNews={}", id, keyword.getName(), deactivated);

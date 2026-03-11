@@ -1,5 +1,6 @@
 package com.example.news_radar.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,6 +39,7 @@ public class Keyword {
     private LocalDateTime createdAt;
 
     // 키워드 소유자 (null = 시스템/마이그레이션 이전 데이터)
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
