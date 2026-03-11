@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout";
 import Header from "@/components/layout/Header";
@@ -38,8 +38,8 @@ function DashboardContent({ children }: DashboardLayoutProps) {
     fetch("/api/system/status", { cache: "no-store" })
       .then(async (res) => {
         if (res.status === 401 || res.status === 403) {
-          setBackendError("인증이 만료되었습니다. 페이지를 새로고침하고 다시 로그인해 주세요.");
-          setInitialized(false);
+          // 백엔드 JWT 만료 → NextAuth 세션도 정리하고 로그인 페이지로
+          await signOut({ callbackUrl: "/login" });
           return;
         }
         if (!res.ok) throw new Error(`Backend ${res.status}`);
