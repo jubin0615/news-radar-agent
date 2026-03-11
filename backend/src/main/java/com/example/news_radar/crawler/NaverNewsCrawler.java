@@ -144,8 +144,14 @@ public class NaverNewsCrawler implements NewsCrawler {
         log.info("[네이버] keyword={}, expandedQuery={}", keyword, expandedQuery);
 
         String encodedKeyword = URLEncoder.encode(expandedQuery, StandardCharsets.UTF_8);
+        // 네이버 뉴스 검색: 최신순(sort=1) + 날짜 범위 필터(nso=p:from~to)
         String searchUrl = "https://search.naver.com/search.naver?where=news&query="
                 + encodedKeyword + "&sort=1";
+        if (lastCollectedAt != null) {
+            String from = lastCollectedAt.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+            String to = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+            searchUrl += "&nso=so:dd,p:from" + from + "to" + to;
+        }
 
         String ua = USER_AGENTS[random.nextInt(USER_AGENTS.length)];
 
@@ -175,10 +181,15 @@ public class NaverNewsCrawler implements NewsCrawler {
                 String title = item.text();
                 String link = item.attr("href");
 
-                // 시간 기반 중단: 기사의 발행 시각 추출 후 비교
+                // 시간 기반 필터: 기사의 발행 시각 추출 후 비교
                 LocalDateTime publishedAt = extractDateFromLegacyItem(item, now);
                 if (shouldStopByTime(publishedAt, lastCollectedAt, keyword)) {
                     break;
+                }
+                // 날짜 파싱 실패 + cutoff 설정됨 → 오래된 기사일 수 있으므로 스킵
+                if (publishedAt == null && lastCollectedAt != null) {
+                    log.debug("[네이버] keyword={}, 날짜 파싱 실패 → 스킵: {}", keyword, title);
+                    continue;
                 }
 
                 addTitleAndLink(titleAndLinks, title, link);
