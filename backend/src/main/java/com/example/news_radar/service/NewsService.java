@@ -278,10 +278,11 @@ public class NewsService {
         int sliceRange = sliceEnd - sliceStart;
 
         // 키워드별 마지막 수집 시각 조회 (시간 기반 크롤링 중단 기준)
+        // 새 키워드(수집 이력 없음)는 기본 3일 이내 뉴스만 수집
         LocalDateTime keywordLastCollectedAt = newsRepository
                 .findTopByKeywordAndIsActiveTrueOrderByCollectedAtDesc(keyword)
                 .map(News::getCollectedAt)
-                .orElse(null);
+                .orElse(LocalDateTime.now().minusDays(3));
 
         // 크롤러에 세션의 known URLs + 마지막 수집 시각을 전달
         List<RawNewsItem> items = crawlerManager.crawlAll(
