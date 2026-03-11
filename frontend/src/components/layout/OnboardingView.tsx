@@ -5,12 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Radar, Sparkles, Zap, Brain, Loader2, CheckCircle2, Newspaper, ArrowRight, AlertTriangle, RotateCcw } from "lucide-react";
 
 interface ProgressEvent {
-  status: string;
+  type: string;
   keyword: string | null;
   message: string;
-  current: number;
-  total: number;
-  percent: number;
+  currentStep: number;
+  totalSteps: number;
+  percentage: number;
   count: number | null;
 }
 
@@ -82,16 +82,16 @@ export default function OnboardingView({ onComplete, initialError }: OnboardingV
               if (!json) continue;
               try {
                 const evt: ProgressEvent = JSON.parse(json);
-                if (evt.percent >= 0) setProgress(evt.percent);
+                if (evt.percentage >= 0) setProgress(evt.percentage);
                 setStatusMsg(evt.message);
                 if (evt.keyword) setCurrentKeyword(evt.keyword);
                 if (evt.count && evt.count > 0) {
                   setSavedCount((prev) => prev + evt.count!);
                 }
-                if (evt.status === "COMPLETED") {
+                if (evt.type === "COMPLETED") {
                   setPhase("done");
                 }
-                if (evt.status === "ERROR") {
+                if (evt.type === "ERROR") {
                   setErrorMsg(evt.message);
                   setPhase("error");
                 }
