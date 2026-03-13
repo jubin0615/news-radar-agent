@@ -25,20 +25,8 @@ UPDATE keyword SET user_id = 1 WHERE user_id IS NULL;
 -- name 단독 유니크 → (name, user_id) 복합 유니크
 -- 여러 사용자가 같은 키워드를 등록할 수 있도록 허용
 -- ========================================
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- keyword 테이블의 name 컬럼만 포함하는 단독 유니크 제약 모두 제거
-    FOR r IN
-        SELECT c.conname
-        FROM pg_constraint c
-        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
-        WHERE c.conrelid = 'keyword'::regclass
-          AND c.contype = 'u'
-          AND array_length(c.conkey, 1) = 1
-          AND a.attname = 'name'
-    LOOP
-        EXECUTE 'ALTER TABLE keyword DROP CONSTRAINT ' || r.conname;
-    END LOOP;
-END $$;
+
+-- name 단독 유니크 제약 제거 (존재하는 경우에만)
+ALTER TABLE keyword DROP CONSTRAINT IF EXISTS uk_keyword_name;
+ALTER TABLE keyword DROP CONSTRAINT IF EXISTS keyword_name_key;
+ALTER TABLE keyword DROP CONSTRAINT IF EXISTS ukr1jv1mi3bfl7yq09ynjad3ofa;
