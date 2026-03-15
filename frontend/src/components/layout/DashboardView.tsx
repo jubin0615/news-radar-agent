@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { Oxanium } from "next/font/google";
 import { Loader2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import FloatingGuide from "./FloatingGuide";
@@ -20,6 +21,11 @@ import {
   X,
 } from "lucide-react";
 import { motion } from "framer-motion";
+
+const oxanium = Oxanium({
+  subsets: ["latin"],
+  weight: ["600"],
+});
 
 function NewsDetailModal({
   news,
@@ -191,7 +197,36 @@ export default function DashboardView() {
         {/* ── Header + HUD ── */}
         <div className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="hidden order-2 font-mono text-[11px] font-semibold uppercase tracking-[0.32em]"
+                style={{ color: "rgba(0, 212, 255, 0.72)" }}
+              >
+                Control Panel
+              </span>
+              <div className="order-2 flex items-center gap-3">
+                <p
+                  className={`${oxanium.className} text-[1.78rem] font-semibold uppercase tracking-[0.14em]`}
+                  style={{ color: "rgba(0, 212, 255, 0.82)" }}
+                >
+                  Control Panel
+                </p>
+                <h2 className="sr-only text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                  뉴스 레이더
+                </h2>
+                <span
+                  className="hidden h-px w-16 md:block"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(0, 212, 255, 0.65), rgba(0, 212, 255, 0))",
+                  }}
+                />
+              </div>
+              <p className="order-1 text-sm text-[var(--text-secondary)]">
+                오늘 수집 현황과 키워드 흐름을 한눈에
+              </p>
+            </div>
+            <h1 className="sr-only text-2xl font-bold text-[var(--text-primary)]">
               대시보드
             </h1>
           </div>
