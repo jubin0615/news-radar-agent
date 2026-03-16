@@ -50,10 +50,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "ORDER BY n.importanceScore DESC NULLS LAST")
     List<News> searchByKeyword(String keyword);
 
-    // 중요도 순 전체 조회 (활성만)
-    @Query("SELECT n FROM News n WHERE n.isActive = true ORDER BY n.importanceScore DESC")
-    List<News> findAllByScore();
-
     // ── 사용자별 키워드 목록 기반 조회 ───────────────────────────
     // 중요도 순 조회 (사용자의 키워드만)
     @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords ORDER BY n.importanceScore DESC")
@@ -93,12 +89,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
            "AND n.collectedAt >= :since")
     List<News> findForVectorStore(List<String> keywords, int minScore, LocalDateTime since);
 
-    // 트렌드 브리핑 전용: 중요도 HIGH 이상 + 시의성(timelinessScore) 내림차순 정렬
-    @Query("SELECT n FROM News n WHERE n.isActive = true " +
-           "AND n.importanceScore >= :minImportanceScore " +
-           "ORDER BY n.timelinessScore DESC NULLS LAST, n.importanceScore DESC")
-    List<News> findTrendNews(int minImportanceScore, Pageable pageable);
-
     // 트렌드 브리핑 (사용자 키워드 기반)
     @Query("SELECT n FROM News n WHERE n.isActive = true " +
            "AND n.keyword IN :keywords " +
@@ -110,12 +100,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     @Query("SELECT n FROM News n WHERE n.isActive = true AND n.keyword IN :keywords " +
            "AND n.collectedAt BETWEEN :start AND :end ORDER BY n.importanceScore DESC NULLS LAST")
     List<News> findByKeywordsAndCollectedAtBetween(List<String> keywords, LocalDateTime start, LocalDateTime end);
-
-    // 최근 N시간 이내 브리핑용: 중요도 순 → 최신순 정렬 (활성만)
-    @Query("SELECT n FROM News n WHERE n.isActive = true " +
-           "AND n.collectedAt >= :since " +
-           "ORDER BY n.importanceScore DESC NULLS LAST, n.collectedAt DESC")
-    List<News> findRecentBriefingNews(LocalDateTime since);
 
     // AI 분석 실패한 활성 뉴스 조회 (summary 또는 aiReason에 "실패" 포함)
     @Query("SELECT n FROM News n WHERE n.isActive = true " +

@@ -414,9 +414,9 @@ public class OpenAiService {
                     int articleIndex = node.has("articleIndex") ? node.get("articleIndex").asInt(-1) : -1;
                     if (articleIndex < 0 || articleIndex >= items.size()) continue;
 
-                    int impact = clamp(node.path("impact").asInt(10), 0, 20);
-                    int innovation = clamp(node.path("innovation").asInt(7), 0, 15);
-                    int timeliness = clamp(node.path("timeliness").asInt(8), 0, 15);
+                    int impact = Math.clamp(node.path("impact").asInt(10), 0, 20);
+                    int innovation = Math.clamp(node.path("innovation").asInt(7), 0, 15);
+                    int timeliness = Math.clamp(node.path("timeliness").asInt(8), 0, 15);
                     String reason = nodeText(node, "reason", "분석 근거 없음");
                     String category = nodeText(node, "category", "기타");
                     String summary = nodeText(node, "summary", "요약 없음");
@@ -474,10 +474,6 @@ public class OpenAiService {
         String category = (raw.category() == null || raw.category().isBlank()) ? "기타"         : raw.category();
         String summary  = (raw.summary()  == null || raw.summary().isBlank())  ? "요약 없음"    : raw.summary();
         return new AiEvaluation(impact, innovation, timeliness, reason, category, summary);
-    }
-
-    private int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private String nodeText(JsonNode parent, String field, String defaultValue) {

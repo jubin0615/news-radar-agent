@@ -33,9 +33,9 @@ public class ImportanceEvaluator {
      * AI가 평가한 3가지 기준(파급력/혁신성/시의성) 합산 → 최대 50점
      */
     public int calculateLlmScore(AiEvaluation eval) {
-        int impact     = clamp(eval.impact(),     0, 20);
-        int innovation = clamp(eval.innovation(), 0, 15);
-        int timeliness = clamp(eval.timeliness(), 0, 15);
+        int impact     = Math.clamp(eval.impact(),     0, 20);
+        int innovation = Math.clamp(eval.innovation(), 0, 15);
+        int timeliness = Math.clamp(eval.timeliness(), 0, 15);
         return impact + innovation + timeliness;
     }
 
@@ -222,11 +222,4 @@ public class ImportanceEvaluator {
         SourceTier(int score) { this.score = score; }
     }
 
-    // =====================================================================
-    // 유틸
-    // =====================================================================
-
-    private int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
 }

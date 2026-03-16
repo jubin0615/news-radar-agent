@@ -3,14 +3,12 @@ package com.example.news_radar.controller;
 import com.example.news_radar.dto.CollectionStatus;
 import com.example.news_radar.dto.NewsTrendResponse;
 import com.example.news_radar.dto.NewsResponse;
-import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.entity.News;
 import com.example.news_radar.repository.NewsRepository;
 import com.example.news_radar.service.ImportanceEvaluator;
 import com.example.news_radar.service.KeywordService;
 import com.example.news_radar.service.NewsService;
 import com.example.news_radar.service.NewsTrendService;
-import com.example.news_radar.service.OpenAiService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -40,24 +38,16 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class NewsController {
 
     private final NewsRepository newsRepository;
-    private final OpenAiService openAiService;
     private final NewsService newsService;
     private final NewsTrendService newsTrendService;
     private final KeywordService keywordService;
-
-    /** 사용자의 키워드 이름 목록 조회 */
-    private List<String> getUserKeywordNames(Long userId) {
-        return keywordService.getKeywordsByUser(userId).stream()
-                .map(Keyword::getName)
-                .toList();
-    }
 
     // 전체 뉴스 조회 (중요도 순, 사용자 키워드 기반)
     @GetMapping
     public List<NewsResponse> getAllNews(
             @AuthenticationPrincipal Long userId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         if (myKeywords.isEmpty()) return List.of();
 
         if (date != null) {
@@ -76,7 +66,7 @@ public class NewsController {
     public List<NewsResponse> searchByKeyword(
             @AuthenticationPrincipal Long userId,
             @RequestParam String keyword) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         boolean isOwned = myKeywords.stream().anyMatch(k -> k.equalsIgnoreCase(keyword));
         if (!isOwned) return List.of();
 
@@ -94,7 +84,7 @@ public class NewsController {
     public List<NewsResponse> getTopNews(
             @AuthenticationPrincipal Long userId,
             @RequestParam(defaultValue = "60") int minScore) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         if (myKeywords.isEmpty()) return List.of();
 
         return newsRepository.findByMinScore(minScore).stream()
@@ -109,7 +99,7 @@ public class NewsController {
             @AuthenticationPrincipal Long userId,
             @RequestParam(defaultValue = "48") int hours,
             @RequestParam(defaultValue = "5") int limit) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         if (myKeywords.isEmpty()) return List.of();
 
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
@@ -131,7 +121,7 @@ public class NewsController {
         SseEmitter emitter = new SseEmitter(300_000L); // 5분 타임아웃
 
         // 사용자의 키워드 목록을 Set으로 전달 → 관련 이벤트만 수신
-        Set<String> myKeywords = getUserKeywordNames(userId).stream()
+        Set<String> myKeywords = keywordService.getKeywordNamesByUser(userId).stream()
                 .collect(Collectors.toSet());
         SseProgressListener listener = new SseProgressListener(emitter, userId, myKeywords);
 
@@ -167,12 +157,6 @@ public class NewsController {
     @GetMapping("/collection-status")
     public CollectionStatus getCollectionStatus() {
         return newsService.getCollectionStatus();
-    }
-
-    // AI 요약 테스트
-    @GetMapping("/ai-test")
-    public String testAi(@RequestParam String title) {
-        return openAiService.getSummary(title);
     }
 
     // AI 분석 실패 뉴스 재분석 (DNS 장애 등 복구 후 일괄 재시도)

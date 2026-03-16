@@ -46,18 +46,6 @@ public class ReportService {
     }
 
     /**
-     * 전체 키워드 일일 리포트 (오늘 날짜 기준)
-     */
-    public ReportResult generateDailyReport() {
-        LocalDate today = LocalDate.now();
-        LocalDateTime start = today.atStartOfDay();
-        LocalDateTime end = today.atTime(LocalTime.MAX);
-
-        List<News> allToday = newsRepository.findByCollectedAtBetween(start, end);
-        return buildReportData(allToday);
-    }
-
-    /**
      * 사용자 키워드 기반 일일 리포트
      */
     public ReportResult generateDailyReport(List<String> userKeywords) {
@@ -67,14 +55,6 @@ public class ReportService {
 
         List<News> todayNews = newsRepository.findByKeywordsAndCollectedAtBetween(userKeywords, start, end);
         return buildReportData(todayNews);
-    }
-
-    /**
-     * 전체 수집된 뉴스 리포트 (오늘 뉴스가 없을 때 폴백용)
-     */
-    public ReportResult generateAllNewsReport() {
-        List<News> allNews = newsRepository.findAllByScore();
-        return buildReportData(allNews);
     }
 
     /**

@@ -1,7 +1,6 @@
 package com.example.news_radar.controller;
 
 import com.example.news_radar.dto.ReportResult;
-import com.example.news_radar.entity.Keyword;
 import com.example.news_radar.service.KeywordService;
 import com.example.news_radar.service.ReportService;
 
@@ -28,19 +27,13 @@ public class ReportController {
     private final ReportService reportService;
     private final KeywordService keywordService;
 
-    private List<String> getUserKeywordNames(Long userId) {
-        return keywordService.getKeywordsByUser(userId).stream()
-                .map(Keyword::getName)
-                .toList();
-    }
-
     // JSON 리포트 조회 — 사용자 본인의 키워드인지 검증
     @GetMapping
     public ResponseEntity<ReportResult> getReport(
             @AuthenticationPrincipal Long userId,
             @RequestParam String keyword,
             @RequestParam(required = false) String date) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         boolean isOwned = myKeywords.stream().anyMatch(k -> k.equalsIgnoreCase(keyword));
         if (!isOwned) {
             return ResponseEntity.ok(new ReportResult(0, 0, "해당 키워드에 대한 접근 권한이 없습니다.", List.of(), List.of()));
@@ -56,7 +49,7 @@ public class ReportController {
             @AuthenticationPrincipal Long userId,
             @RequestParam String keyword,
             @RequestParam(required = false) String date) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         boolean isOwned = myKeywords.stream().anyMatch(k -> k.equalsIgnoreCase(keyword));
         if (!isOwned) return ResponseEntity.status(403).build();
 
@@ -77,7 +70,7 @@ public class ReportController {
     // 일일 리포트 — 사용자 키워드 기반
     @PostMapping("/daily")
     public ResponseEntity<ReportResult> generateDailyReport(@AuthenticationPrincipal Long userId) {
-        List<String> myKeywords = getUserKeywordNames(userId);
+        List<String> myKeywords = keywordService.getKeywordNamesByUser(userId);
         if (myKeywords.isEmpty()) {
             return ResponseEntity.ok(new ReportResult(0, 0, "등록된 키워드가 없습니다.", List.of(), List.of()));
         }
