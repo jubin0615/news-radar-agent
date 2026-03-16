@@ -54,36 +54,80 @@ function computeOrbitPositions(
   });
 }
 
-/** Quadratic bezier path that curves outward from center */
-function curvedLinkPath(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  cx: number,
-  cy: number,
-) {
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-  // Push control point perpendicular to the line, away from center
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const perpX = -dy / len;
-  const perpY = dx / len;
-  // Determine which side of the center the midpoint is on
-  const toMidX = mx - cx;
-  const toMidY = my - cy;
-  const sign = perpX * toMidX + perpY * toMidY > 0 ? 1 : -1;
-  const curvature = len * 0.18;
-  const cpx = mx + perpX * curvature * sign;
-  const cpy = my + perpY * curvature * sign;
-  return `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`;
-}
-
 function estimateTagTextWidth(text: string, korean: boolean, active: boolean) {
   const widthPerChar = korean ? 10.5 : active ? 8.8 : 8.1;
   return Math.max(44, text.length * widthPerChar);
+}
+
+function estimateKeywordPillWidth(keyword: KeywordWithStats, active = false) {
+  const korean = isKorean(keyword.name);
+  const paddingX = active ? 12 : 10;
+  const dotSize = 8;
+  const dotGap = 6;
+  const labelWidth = estimateTagTextWidth(keyword.name, korean, active);
+  // Count badge is now external (floating), not included in pill width
+  return paddingX * 2 + dotSize + dotGap + labelWidth;
+}
+
+function computeCollisionAwareRingPositions(
+  indices: number[],
+  keywords: KeywordWithStats[],
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngle: number,
+) {
+  if (indices.length === 0) return [] as { x: number; y: number }[];
+  if (indices.length === 1) {
+    return computeOrbitPositions(1, cx, cy, radius, radius, startAngle);
+  }
+
+  const items = indices.map((idx) => {
+    const pillWidth = estimateKeywordPillWidth(keywords[idx]);
+    return { idx, collisionRadius: pillWidth / 2 + 14 };
+  });
+
+  const baseStep = (2 * Math.PI) / indices.length;
+  let angles = indices.map((_, i) => startAngle + i * baseStep);
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    for (let i = 1; i < angles.length; i += 1) {
+      const prev = items[i - 1];
+      const current = items[i];
+      const minGap =
+        (prev.collisionRadius + current.collisionRadius) / radius;
+
+      if (angles[i] - angles[i - 1] < minGap) {
+        angles[i] = angles[i - 1] + minGap;
+      }
+    }
+
+    const first = items[0];
+    const last = items[items.length - 1];
+    const minWrapGap =
+      (first.collisionRadius + last.collisionRadius) / radius;
+    const wrapGap = 2 * Math.PI - (angles[angles.length - 1] - angles[0]);
+
+    if (wrapGap < minWrapGap) {
+      const spread = minWrapGap - wrapGap;
+      const mid = (angles.length - 1) / 2;
+      angles = angles.map(
+        (angle, i) =>
+          angle + ((i - mid) / Math.max(1, angles.length - 1)) * spread,
+      );
+    }
+
+    const desiredMean = startAngle + baseStep * ((angles.length - 1) / 2);
+    const actualMean =
+      angles.reduce((sum, angle) => sum + angle, 0) / angles.length;
+    const shift = desiredMean - actualMean;
+    angles = angles.map((angle) => angle + shift);
+  }
+
+  return angles.map((angle) => ({
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  }));
 }
 
 // ── SVG Defs (filters & gradients) ──────────────────────────── //
@@ -120,14 +164,6 @@ function SvgDefs() {
         </feMerge>
       </filter>
 
-      {/* Link gradients */}
-      {NEON_PALETTE.map((c) => (
-        <linearGradient key={`lg-${c.name}`} id={`link-grad-${c.name}`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={`rgba(${c.rgb},0.05)`} />
-          <stop offset="50%" stopColor={`rgba(${c.rgb},0.35)`} />
-          <stop offset="100%" stopColor={`rgba(${c.rgb},0.05)`} />
-        </linearGradient>
-      ))}
     </defs>
   );
 }
@@ -191,13 +227,11 @@ function CoreNode({
   );
 }
 
-// ── Satellite Node ───────────────────────────────────────────── //
+// ── Satellite Node (radar target style) ─────────────────────── //
 function SatelliteNode({
   keyword,
   x,
   y,
-  cx,
-  cy,
   index,
   isHighweight,
   isSelected,
@@ -210,8 +244,6 @@ function SatelliteNode({
   keyword: KeywordWithStats;
   x: number;
   y: number;
-  cx: number;
-  cy: number;
   index: number;
   isHighweight: boolean;
   isSelected: boolean;
@@ -226,28 +258,30 @@ function SatelliteNode({
   const koreanLabel = isKorean(keyword.name);
   const countLabel = keyword.newsCount > 99 ? "99+" : `${keyword.newsCount}`;
   const showCount = keyword.newsCount > 0;
-  const nodeRadius = active ? 9 : isHighweight ? 7.5 : 6;
-  const shellRadius = active ? nodeRadius + 6 : nodeRadius + 4;
-  const radialX = x - cx;
-  const radialY = y - cy;
-  const radialLength = Math.hypot(radialX, radialY) || 1;
-  const nx = radialX / radialLength;
-  const ny = radialY / radialLength;
-  const tagPaddingX = active ? 12 : 10;
-  const tagHeight = active ? 24 : 22;
-  const badgeWidth = showCount ? Math.max(22, countLabel.length * 6 + 10) : 0;
+
+  // Pill dimensions (count badge is external)
+  const paddingX = active ? 12 : 10;
+  const pillHeight = active ? 26 : 24;
+  const dotSize = 8;
+  const dotGap = 6;
   const labelWidth = estimateTagTextWidth(keyword.name, koreanLabel, active);
-  const tagGap = showCount ? 8 : 0;
-  const tagWidth = tagPaddingX * 2 + labelWidth + tagGap + badgeWidth;
-  const tagDistance = nodeRadius + 14 + tagWidth / 2;
-  const tagCenterX = x + nx * tagDistance;
-  const tagCenterY = y + ny * (nodeRadius + 8);
-  const tagX = tagCenterX - tagWidth / 2;
-  const tagY = tagCenterY - tagHeight / 2;
-  const connectorStartX = x + nx * (nodeRadius + 2);
-  const connectorStartY = y + ny * (nodeRadius + 2);
-  const connectorEndX = tagCenterX - nx * Math.min(tagWidth / 2 - 6, 18);
-  const connectorEndY = tagCenterY - ny * Math.max(tagHeight / 2 - 4, 6);
+  const pillWidth = paddingX * 2 + dotSize + dotGap + labelWidth;
+
+  const pillX = x - pillWidth / 2;
+  const pillY = y - pillHeight / 2;
+
+  // Targeting bracket geometry
+  const bracketGap = active ? 4 : 3;
+  const bracketLen = active ? 8 : 6;
+  const bx1 = pillX - bracketGap;
+  const by1 = pillY - bracketGap;
+  const bx2 = pillX + pillWidth + bracketGap;
+  const by2 = pillY + pillHeight + bracketGap;
+
+  // Floating count badge position (top-right corner)
+  const badgeR = countLabel.length > 2 ? 11 : 9;
+  const badgeCx = pillX + pillWidth - 2;
+  const badgeCy = pillY - 2;
 
   return (
     <motion.g
@@ -270,229 +304,126 @@ function SatelliteNode({
       }}
       style={{ cursor: "pointer" }}
     >
-      {/* Curved connection link */}
-      <motion.path
-        d={curvedLinkPath(cx, cy, x, y, cx, cy)}
+      {/* Targeting brackets ┌ ┐ └ ┘ */}
+      <g
+        stroke={`rgba(${color.rgb},${active ? 0.6 : dimmed ? 0.08 : 0.22})`}
+        strokeWidth={active ? 1.2 : 0.8}
+        strokeLinecap="round"
         fill="none"
-        stroke={
-          active
-            ? `rgba(${color.rgb},0.85)`
-            : `url(#link-grad-${color.name})`
-        }
-        strokeWidth={active ? 2 : 1.2}
-        strokeLinecap="round"
-        transition={{ duration: 0.3 }}
-      />
+      >
+        <path d={`M ${bx1} ${by1 + bracketLen} L ${bx1} ${by1} L ${bx1 + bracketLen} ${by1}`} />
+        <path d={`M ${bx2 - bracketLen} ${by1} L ${bx2} ${by1} L ${bx2} ${by1 + bracketLen}`} />
+        <path d={`M ${bx1} ${by2 - bracketLen} L ${bx1} ${by2} L ${bx1 + bracketLen} ${by2}`} />
+        <path d={`M ${bx2 - bracketLen} ${by2} L ${bx2} ${by2} L ${bx2} ${by2 - bracketLen}`} />
+      </g>
 
-      <line
-        x1={connectorStartX}
-        y1={connectorStartY}
-        x2={connectorEndX}
-        y2={connectorEndY}
-        stroke={`rgba(${color.rgb},${active ? 0.55 : dimmed ? 0.12 : 0.28})`}
-        strokeWidth={active ? 1.35 : 1}
-        strokeLinecap="round"
-      />
-
-      {/* Outer glow ring (hover / select) */}
+      {/* Hover/select glow */}
       <AnimatePresence>
         {active && (
-          <motion.circle
-            cx={x}
-            cy={y}
-            r={shellRadius + 7}
-            fill={`rgba(${color.rgb},0.08)`}
-            stroke={`rgba(${color.rgb},0.18)`}
-            strokeWidth={0.75}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
+          <motion.rect
+            x={pillX - 2}
+            y={pillY - 2}
+            width={pillWidth + 4}
+            height={pillHeight + 4}
+            rx={(pillHeight + 4) / 2}
+            fill={`rgba(${color.rgb},0.06)`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           />
         )}
       </AnimatePresence>
 
-      {/* Pulse ring for high-weight nodes */}
-      {isHighweight && !dimmed && (
-        <circle cx={x} cy={y} r={shellRadius} fill="none">
-          <animate
-            attributeName="r"
-            values={`${shellRadius};${shellRadius + 9};${shellRadius}`}
-            dur="3s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="stroke-opacity"
-            values="0.3;0;0.3"
-            dur="3s"
-            repeatCount="indefinite"
-          />
-          <set attributeName="stroke" to={`rgba(${color.rgb},0.4)`} />
-          <set attributeName="stroke-width" to="1.5" />
-        </circle>
-      )}
-
-      {/* Orb shell */}
-      <motion.circle
-        cx={x}
-        cy={y}
-        r={shellRadius}
-        fill={`rgba(${color.rgb},${active ? 0.14 : 0.08})`}
-        stroke={`rgba(${color.rgb},${active ? 0.42 : 0.2})`}
-        strokeWidth={0.9}
-        transition={{ duration: 0.25 }}
+      {/* Pill background */}
+      <rect
+        x={pillX}
+        y={pillY}
+        width={pillWidth}
+        height={pillHeight}
+        rx={pillHeight / 2}
+        fill={active ? "rgba(8, 12, 20, 0.88)" : "rgba(8, 12, 20, 0.74)"}
+        stroke={`rgba(${color.rgb},${active ? 0.4 : dimmed ? 0.1 : 0.2})`}
+        strokeWidth={active ? 1 : 0.7}
       />
 
-      {/* Main node circle */}
-      <motion.circle
-        cx={x}
-        cy={y}
-        r={nodeRadius}
-        fill={`rgba(${color.rgb},${active ? 0.86 : 0.62})`}
-        stroke={`rgba(${color.rgb},${active ? 0.9 : 0.35})`}
-        strokeWidth={active ? 1.5 : 1}
-        filter={active || isHighweight ? `url(#glow-${color.name})` : undefined}
-        transition={{ duration: 0.25 }}
-      />
-
-      {/* Inner bright core */}
-      <circle cx={x} cy={y} r={2.2} fill={`rgba(${color.rgb},0.95)`} />
+      {/* Blip dot */}
       <circle
-        cx={x - nodeRadius * 0.38}
-        cy={y - nodeRadius * 0.34}
-        r={1.5}
-        fill="rgba(255,255,255,0.78)"
-        opacity={active ? 0.95 : 0.55}
+        cx={pillX + paddingX + dotSize / 2}
+        cy={y}
+        r={dotSize / 2}
+        fill={`rgba(${color.rgb},${active ? 1 : 0.75})`}
+        filter={active || isHighweight ? `url(#glow-${color.name})` : undefined}
+      >
+        {(isHighweight || active) && !dimmed && (
+          <animate
+            attributeName="opacity"
+            values="0.7;1;0.7"
+            dur="2s"
+            repeatCount="indefinite"
+          />
+        )}
+      </circle>
+
+      {/* Blip bright core */}
+      <circle
+        cx={pillX + paddingX + dotSize / 2}
+        cy={y}
+        r={2}
+        fill={`rgba(255,255,255,${active ? 0.9 : 0.6})`}
       />
 
-      {/* Label + count group — stacked vertically above node */}
-      <g style={{ display: "none" }}>
-        {/* Keyword name */}
-        <motion.text
-          x={x}
-          y={y + (active ? 22 : 18)}
-          textAnchor="middle"
-          fill={`rgba(${color.rgb},${active ? 1 : dimmed ? 0.3 : 0.7})`}
-          fontSize={
-            isKorean(keyword.name) ? (active ? 14 : 12) : (active ? 13 : 11)
-          }
-          fontFamily={isKorean(keyword.name) ? FONT_SANS : FONT_MONO}
-          fontWeight={active ? 700 : 600}
-          letterSpacing={isKorean(keyword.name) ? "0.02em" : "0.06em"}
-          transition={{ duration: 0.25 }}
-          style={{
-            textTransform: isKorean(keyword.name)
-              ? ("none" as const)
-              : ("uppercase" as const),
-            textShadow: active
-              ? `0 0 10px rgba(${color.rgb},0.6), 0 0 25px rgba(${color.rgb},0.25)`
-              : "none",
-          }}
-        >
-          {keyword.name}
-        </motion.text>
+      {/* Keyword name */}
+      <motion.text
+        x={pillX + paddingX + dotSize + dotGap}
+        y={y + 0.5}
+        textAnchor="start"
+        dominantBaseline="central"
+        fill={
+          active
+            ? "rgba(241, 245, 249, 0.98)"
+            : dimmed
+              ? "rgba(226, 232, 240, 0.38)"
+              : "rgba(226, 232, 240, 0.84)"
+        }
+        fontSize={koreanLabel ? (active ? 13 : 12) : active ? 12 : 11}
+        fontFamily={koreanLabel ? FONT_SANS : FONT_MONO}
+        fontWeight={active ? 700 : 600}
+        letterSpacing={koreanLabel ? "0.02em" : "0.05em"}
+        transition={{ duration: 0.25 }}
+        style={{
+          textTransform: koreanLabel ? ("none" as const) : ("uppercase" as const),
+          textShadow: active ? `0 0 12px rgba(${color.rgb},0.24)` : "none",
+        }}
+      >
+        {keyword.name}
+      </motion.text>
 
-        {/* News count — small pill below keyword name */}
-        {keyword.newsCount > 0 && !dimmed && (
-          <g>
-            <rect
-              x={x - 14}
-              y={y + (active ? 26 : 22)}
-              width={28}
-              height={14}
-              rx={7}
-              fill={`rgba(${color.rgb},0.12)`}
-              stroke={`rgba(${color.rgb},0.25)`}
-              strokeWidth={0.5}
-            />
-            <text
-              x={x}
-              y={y + (active ? 33 : 29)}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fill={`rgba(${color.rgb},0.85)`}
-              fontSize={8}
-              fontFamily={FONT_MONO}
-              fontWeight={700}
-            >
-              {keyword.newsCount > 99 ? "99+" : keyword.newsCount}
-            </text>
-          </g>
-        )}
-      </g>
-
-      <g>
-        <rect
-          x={tagX}
-          y={tagY}
-          width={tagWidth}
-          height={tagHeight}
-          rx={tagHeight / 2}
-          fill={active ? "rgba(8, 12, 20, 0.84)" : "rgba(8, 12, 20, 0.7)"}
-          stroke={`rgba(${color.rgb},${active ? 0.34 : dimmed ? 0.12 : 0.22})`}
-          strokeWidth={0.9}
-        />
-        <line
-          x1={tagX + 10}
-          y1={tagY + 2}
-          x2={tagX + tagWidth - 10}
-          y2={tagY + 2}
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={0.8}
-          strokeLinecap="round"
-        />
-        <motion.text
-          x={tagX + tagPaddingX}
-          y={tagCenterY + 0.5}
-          textAnchor="start"
-          dominantBaseline="central"
-          fill={
-            active
-              ? "rgba(241, 245, 249, 0.98)"
-              : dimmed
-                ? "rgba(226, 232, 240, 0.38)"
-                : "rgba(226, 232, 240, 0.84)"
-          }
-          fontSize={koreanLabel ? (active ? 13 : 12) : active ? 12 : 11}
-          fontFamily={koreanLabel ? FONT_SANS : FONT_MONO}
-          fontWeight={active ? 700 : 600}
-          letterSpacing={koreanLabel ? "0.02em" : "0.05em"}
-          transition={{ duration: 0.25 }}
-          style={{
-            textTransform: koreanLabel ? ("none" as const) : ("uppercase" as const),
-            textShadow: active ? `0 0 12px rgba(${color.rgb},0.24)` : "none",
-          }}
-        >
-          {keyword.name}
-        </motion.text>
-
-        {showCount && (
-          <g>
-            <rect
-              x={tagX + tagWidth - tagPaddingX - badgeWidth}
-              y={tagY + (tagHeight - 14) / 2}
-              width={badgeWidth}
-              height={14}
-              rx={7}
-              fill={`rgba(${color.rgb},${active ? 0.18 : dimmed ? 0.05 : 0.11})`}
-              stroke={`rgba(${color.rgb},${active ? 0.34 : dimmed ? 0.1 : 0.2})`}
-              strokeWidth={0.7}
-            />
-            <text
-              x={tagX + tagWidth - tagPaddingX - badgeWidth / 2}
-              y={tagCenterY + 0.5}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fill={`rgba(${color.rgb},${active ? 0.96 : dimmed ? 0.35 : 0.82})`}
-              fontSize={8}
-              fontFamily={FONT_MONO}
-              fontWeight={700}
-            >
-              {countLabel}
-            </text>
-          </g>
-        )}
-      </g>
+      {/* Floating count badge (top-right corner) */}
+      {showCount && (
+        <g>
+          <circle
+            cx={badgeCx}
+            cy={badgeCy}
+            r={badgeR}
+            fill="rgba(8, 12, 20, 0.9)"
+            stroke={`rgba(${color.rgb},${active ? 0.5 : dimmed ? 0.1 : 0.3})`}
+            strokeWidth={0.8}
+          />
+          <text
+            x={badgeCx}
+            y={badgeCy + 0.5}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill={`rgba(${color.rgb},${active ? 0.96 : dimmed ? 0.35 : 0.82})`}
+            fontSize={8}
+            fontFamily={FONT_MONO}
+            fontWeight={700}
+          >
+            {countLabel}
+          </text>
+        </g>
+      )}
     </motion.g>
   );
 }
@@ -777,18 +708,26 @@ export default function KeywordMap({
     return counts[idx] ?? 1;
   }, [keywords]);
 
-  // SVG layout
-  const viewSize = 360;
+  // SVG layout — orbit radius auto-expands when pills would overlap
+  const layoutInfo = useMemo(() => {
+    const baseRadius = 110;
+    if (keywords.length === 0) return { orbitRadius: baseRadius, viewSize: 360 };
+    const totalPillWidth = keywords.reduce(
+      (sum, kw) => sum + estimateKeywordPillWidth(kw) + 16,
+      0,
+    );
+    const neededRadius = Math.max(baseRadius, Math.ceil(totalPillWidth / (2 * Math.PI)));
+    const maxPillHalf = Math.max(...keywords.map(kw => estimateKeywordPillWidth(kw) / 2));
+    const neededView = Math.max(360, Math.ceil((neededRadius + maxPillHalf + 30) * 2));
+    return { orbitRadius: neededRadius, viewSize: neededView };
+  }, [keywords]);
+
+  const { orbitRadius, viewSize } = layoutInfo;
   const viewW = viewSize;
   const viewH = viewSize;
   const cx = viewSize / 2;
   const cy = viewSize / 2;
-  const ringRadii = {
-    inner: 104,
-    middle: 124,
-    outer: 136,
-  };
-  const sweepRadius = 156;
+  const sweepRadius = orbitRadius + 32;
 
   const positions = useMemo(() => {
     if (keywords.length <= 3) {
@@ -796,75 +735,20 @@ export default function KeywordMap({
         keywords.length,
         cx,
         cy,
-        ringRadii.middle,
-        ringRadii.middle,
+        orbitRadius,
+        orbitRadius,
       );
     }
 
-    const sortedByWeight = keywords
-      .map((keyword, idx) => ({ idx, newsCount: keyword.newsCount }))
-      .sort((a, b) => b.newsCount - a.newsCount || a.idx - b.idx);
-
-    const innerCount = Math.max(1, Math.ceil(keywords.length * 0.25));
-    const outerCount = Math.max(1, Math.floor(keywords.length * 0.25));
-    const innerSet = new Set(sortedByWeight.slice(0, innerCount).map((item) => item.idx));
-    const outerSet = new Set(
-      sortedByWeight
-        .slice(Math.max(innerCount, sortedByWeight.length - outerCount))
-        .map((item) => item.idx)
-        .filter((idx) => !innerSet.has(idx)),
+    return computeCollisionAwareRingPositions(
+      keywords.map((_, idx) => idx),
+      keywords,
+      cx,
+      cy,
+      orbitRadius,
+      -Math.PI / 2 + Math.PI / 14,
     );
-
-    const innerIndices: number[] = [];
-    const middleIndices: number[] = [];
-    const outerIndices: number[] = [];
-
-    keywords.forEach((_, idx) => {
-      if (innerSet.has(idx)) {
-        innerIndices.push(idx);
-      } else if (outerSet.has(idx)) {
-        outerIndices.push(idx);
-      } else {
-        middleIndices.push(idx);
-      }
-    });
-
-    const resolved = Array.from({ length: keywords.length }, () => ({ x: cx, y: cy }));
-    const rings = [
-      {
-        indices: innerIndices,
-        radius: ringRadii.inner,
-        angle: -Math.PI / 2 - Math.PI / 10,
-      },
-      {
-        indices: middleIndices,
-        radius: ringRadii.middle,
-        angle: -Math.PI / 2 + Math.PI / 12,
-      },
-      {
-        indices: outerIndices,
-        radius: ringRadii.outer,
-        angle: -Math.PI / 2 + Math.PI / 5,
-      },
-    ];
-
-    rings.forEach((ring) => {
-      const ringPositions = computeOrbitPositions(
-        ring.indices.length,
-        cx,
-        cy,
-        ring.radius,
-        ring.radius,
-        ring.angle,
-      );
-
-      ring.indices.forEach((keywordIndex, positionIndex) => {
-        resolved[keywordIndex] = ringPositions[positionIndex] ?? { x: cx, y: cy };
-      });
-    });
-
-    return resolved;
-  }, [keywords, cx, cy, ringRadii.inner, ringRadii.middle, ringRadii.outer]);
+  }, [keywords, cx, cy, orbitRadius]);
 
   // Determine which IDs are "active" (selected or hovered + neighbors)
   const activeIds = useMemo(() => {
@@ -944,17 +828,20 @@ export default function KeywordMap({
               x1={cx + 180} y1={cy - 160} x2={cx - 180} y2={cy + 160}
               stroke="rgba(0,212,255,0.07)" strokeWidth={0.6}
             />
-            {/* Concentric circles — centered on cx,cy (core node) */}
-            {[42, 80, 118, 156].map((r) => (
-              <circle
-                key={r}
-                cx={cx} cy={cy} r={r}
-                fill="none"
-                stroke={r <= 80 ? "rgba(0,212,255,0.14)" : "rgba(0,212,255,0.10)"}
-                strokeWidth={r <= 42 ? 1 : r <= 80 ? 0.8 : 0.6}
-                strokeDasharray={r > 118 ? "5 7" : r > 80 ? "3 5" : "none"}
-              />
-            ))}
+            {/* Concentric circles — scale with orbit radius */}
+            {[0.38, 0.73, 1.07, 1.42].map((ratio) => {
+              const r = Math.round(orbitRadius * ratio);
+              return (
+                <circle
+                  key={ratio}
+                  cx={cx} cy={cy} r={r}
+                  fill="none"
+                  stroke={ratio <= 0.73 ? "rgba(0,212,255,0.14)" : "rgba(0,212,255,0.10)"}
+                  strokeWidth={ratio <= 0.38 ? 1 : ratio <= 0.73 ? 0.8 : 0.6}
+                  strokeDasharray={ratio > 1.07 ? "5 7" : ratio > 0.73 ? "3 5" : "none"}
+                />
+              );
+            })}
             {/* Tick marks on horizontal crosshair */}
             {[-140, -110, -80, -50, 50, 80, 110, 140].map((d) => (
               <line
@@ -1008,43 +895,37 @@ export default function KeywordMap({
             </g>
           </g>
 
-          {/* Weighted orbit rings */}
-          {[
-            {
-              radius: ringRadii.inner,
-              stroke: "rgba(0,212,255,0.11)",
-              strokeWidth: 0.8,
-              strokeDasharray: "3 5",
-            },
-            {
-              radius: ringRadii.middle,
-              stroke: "rgba(0,212,255,0.08)",
-              strokeWidth: 0.8,
-              strokeDasharray: "4 6",
-            },
-            {
-              radius: ringRadii.outer,
-              stroke: "rgba(168,85,247,0.06)",
-              strokeWidth: 0.6,
-              strokeDasharray: "2 7",
-            },
-          ].map((ring) => (
-            <ellipse
-              key={ring.radius}
-              cx={cx}
-              cy={cy}
-              rx={ring.radius}
-              ry={ring.radius}
-              fill="none"
-              stroke={ring.stroke}
-              strokeWidth={ring.strokeWidth}
-              strokeDasharray={ring.strokeDasharray}
-              style={{
-                opacity: activeIds ? 0.26 : 1,
-                transition: "opacity 0.5s ease",
-              }}
-            />
-          ))}
+          {/* Orbit track ellipse */}
+          <ellipse
+            cx={cx}
+            cy={cy}
+            rx={orbitRadius}
+            ry={orbitRadius}
+            fill="none"
+            stroke="rgba(0,212,255,0.08)"
+            strokeWidth={0.8}
+            strokeDasharray="4 6"
+            style={{
+              opacity: activeIds ? 0.3 : 1,
+              transition: "opacity 0.5s ease",
+            }}
+          />
+
+          {/* Secondary orbit ring (decorative) */}
+          <ellipse
+            cx={cx}
+            cy={cy}
+            rx={orbitRadius + 14}
+            ry={orbitRadius + 14}
+            fill="none"
+            stroke="rgba(168,85,247,0.05)"
+            strokeWidth={0.55}
+            strokeDasharray="2 8"
+            style={{
+              opacity: activeIds ? 0.18 : 1,
+              transition: "opacity 0.5s ease",
+            }}
+          />
 
           {/* Core */}
           <CoreNode cx={cx} cy={cy} dimmed={activeIds != null} />
@@ -1060,8 +941,6 @@ export default function KeywordMap({
                   keyword={kw}
                   x={positions[i]?.x ?? cx}
                   y={positions[i]?.y ?? cy}
-                  cx={cx}
-                  cy={cy}
                   index={i}
                   isHighweight={kw.newsCount >= highWeightThreshold && kw.newsCount > 0}
                   isSelected={selectedId === kw.id}
