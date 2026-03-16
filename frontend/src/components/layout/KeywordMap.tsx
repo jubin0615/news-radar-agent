@@ -46,9 +46,10 @@ function computeOrbitPositions(
   cy: number,
   rx: number,
   ry: number,
+  startAngle = -Math.PI / 2,
 ) {
   return Array.from({ length: count }, (_, i) => {
-    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+    const angle = (2 * Math.PI * i) / count + startAngle;
     return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) };
   });
 }
@@ -78,6 +79,11 @@ function curvedLinkPath(
   const cpx = mx + perpX * curvature * sign;
   const cpy = my + perpY * curvature * sign;
   return `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`;
+}
+
+function estimateTagTextWidth(text: string, korean: boolean, active: boolean) {
+  const widthPerChar = korean ? 10.5 : active ? 8.8 : 8.1;
+  return Math.max(44, text.length * widthPerChar);
 }
 
 // ── SVG Defs (filters & gradients) ──────────────────────────── //
@@ -217,7 +223,31 @@ function SatelliteNode({
 }) {
   const color = getNodeColor(index);
   const active = isSelected || isHovered;
-  const nodeRadius = active ? 9 : isHighweight ? 7 : 5;
+  const koreanLabel = isKorean(keyword.name);
+  const countLabel = keyword.newsCount > 99 ? "99+" : `${keyword.newsCount}`;
+  const showCount = keyword.newsCount > 0;
+  const nodeRadius = active ? 9 : isHighweight ? 7.5 : 6;
+  const shellRadius = active ? nodeRadius + 6 : nodeRadius + 4;
+  const radialX = x - cx;
+  const radialY = y - cy;
+  const radialLength = Math.hypot(radialX, radialY) || 1;
+  const nx = radialX / radialLength;
+  const ny = radialY / radialLength;
+  const tagPaddingX = active ? 12 : 10;
+  const tagHeight = active ? 24 : 22;
+  const badgeWidth = showCount ? Math.max(22, countLabel.length * 6 + 10) : 0;
+  const labelWidth = estimateTagTextWidth(keyword.name, koreanLabel, active);
+  const tagGap = showCount ? 8 : 0;
+  const tagWidth = tagPaddingX * 2 + labelWidth + tagGap + badgeWidth;
+  const tagDistance = nodeRadius + 14 + tagWidth / 2;
+  const tagCenterX = x + nx * tagDistance;
+  const tagCenterY = y + ny * (nodeRadius + 8);
+  const tagX = tagCenterX - tagWidth / 2;
+  const tagY = tagCenterY - tagHeight / 2;
+  const connectorStartX = x + nx * (nodeRadius + 2);
+  const connectorStartY = y + ny * (nodeRadius + 2);
+  const connectorEndX = tagCenterX - nx * Math.min(tagWidth / 2 - 6, 18);
+  const connectorEndY = tagCenterY - ny * Math.max(tagHeight / 2 - 4, 6);
 
   return (
     <motion.g
@@ -254,16 +284,26 @@ function SatelliteNode({
         transition={{ duration: 0.3 }}
       />
 
+      <line
+        x1={connectorStartX}
+        y1={connectorStartY}
+        x2={connectorEndX}
+        y2={connectorEndY}
+        stroke={`rgba(${color.rgb},${active ? 0.55 : dimmed ? 0.12 : 0.28})`}
+        strokeWidth={active ? 1.35 : 1}
+        strokeLinecap="round"
+      />
+
       {/* Outer glow ring (hover / select) */}
       <AnimatePresence>
         {active && (
           <motion.circle
             cx={x}
             cy={y}
-            r={22}
-            fill={`rgba(${color.rgb},0.06)`}
-            stroke={`rgba(${color.rgb},0.15)`}
-            strokeWidth={0.5}
+            r={shellRadius + 7}
+            fill={`rgba(${color.rgb},0.08)`}
+            stroke={`rgba(${color.rgb},0.18)`}
+            strokeWidth={0.75}
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
@@ -274,10 +314,10 @@ function SatelliteNode({
 
       {/* Pulse ring for high-weight nodes */}
       {isHighweight && !dimmed && (
-        <circle cx={x} cy={y} r={nodeRadius} fill="none">
+        <circle cx={x} cy={y} r={shellRadius} fill="none">
           <animate
             attributeName="r"
-            values={`${nodeRadius};${nodeRadius + 8};${nodeRadius}`}
+            values={`${shellRadius};${shellRadius + 9};${shellRadius}`}
             dur="3s"
             repeatCount="indefinite"
           />
@@ -292,28 +332,41 @@ function SatelliteNode({
         </circle>
       )}
 
+      {/* Orb shell */}
+      <motion.circle
+        cx={x}
+        cy={y}
+        r={shellRadius}
+        fill={`rgba(${color.rgb},${active ? 0.14 : 0.08})`}
+        stroke={`rgba(${color.rgb},${active ? 0.42 : 0.2})`}
+        strokeWidth={0.9}
+        transition={{ duration: 0.25 }}
+      />
+
       {/* Main node circle */}
       <motion.circle
         cx={x}
         cy={y}
         r={nodeRadius}
-        fill={`rgba(${color.rgb},${active ? 0.9 : 0.55})`}
+        fill={`rgba(${color.rgb},${active ? 0.86 : 0.62})`}
         stroke={`rgba(${color.rgb},${active ? 0.9 : 0.35})`}
         strokeWidth={active ? 1.5 : 1}
-        filter={active ? `url(#glow-${color.name})` : undefined}
+        filter={active || isHighweight ? `url(#glow-${color.name})` : undefined}
         transition={{ duration: 0.25 }}
       />
 
       {/* Inner bright core */}
+      <circle cx={x} cy={y} r={2.2} fill={`rgba(${color.rgb},0.95)`} />
       <circle
-        cx={x}
-        cy={y}
-        r={2}
-        fill={`rgba(${color.rgb},0.95)`}
+        cx={x - nodeRadius * 0.38}
+        cy={y - nodeRadius * 0.34}
+        r={1.5}
+        fill="rgba(255,255,255,0.78)"
+        opacity={active ? 0.95 : 0.55}
       />
 
       {/* Label + count group — stacked vertically above node */}
-      <g>
+      <g style={{ display: "none" }}>
         {/* Keyword name */}
         <motion.text
           x={x}
@@ -363,6 +416,79 @@ function SatelliteNode({
               fontWeight={700}
             >
               {keyword.newsCount > 99 ? "99+" : keyword.newsCount}
+            </text>
+          </g>
+        )}
+      </g>
+
+      <g>
+        <rect
+          x={tagX}
+          y={tagY}
+          width={tagWidth}
+          height={tagHeight}
+          rx={tagHeight / 2}
+          fill={active ? "rgba(8, 12, 20, 0.84)" : "rgba(8, 12, 20, 0.7)"}
+          stroke={`rgba(${color.rgb},${active ? 0.34 : dimmed ? 0.12 : 0.22})`}
+          strokeWidth={0.9}
+        />
+        <line
+          x1={tagX + 10}
+          y1={tagY + 2}
+          x2={tagX + tagWidth - 10}
+          y2={tagY + 2}
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={0.8}
+          strokeLinecap="round"
+        />
+        <motion.text
+          x={tagX + tagPaddingX}
+          y={tagCenterY + 0.5}
+          textAnchor="start"
+          dominantBaseline="central"
+          fill={
+            active
+              ? "rgba(241, 245, 249, 0.98)"
+              : dimmed
+                ? "rgba(226, 232, 240, 0.38)"
+                : "rgba(226, 232, 240, 0.84)"
+          }
+          fontSize={koreanLabel ? (active ? 13 : 12) : active ? 12 : 11}
+          fontFamily={koreanLabel ? FONT_SANS : FONT_MONO}
+          fontWeight={active ? 700 : 600}
+          letterSpacing={koreanLabel ? "0.02em" : "0.05em"}
+          transition={{ duration: 0.25 }}
+          style={{
+            textTransform: koreanLabel ? ("none" as const) : ("uppercase" as const),
+            textShadow: active ? `0 0 12px rgba(${color.rgb},0.24)` : "none",
+          }}
+        >
+          {keyword.name}
+        </motion.text>
+
+        {showCount && (
+          <g>
+            <rect
+              x={tagX + tagWidth - tagPaddingX - badgeWidth}
+              y={tagY + (tagHeight - 14) / 2}
+              width={badgeWidth}
+              height={14}
+              rx={7}
+              fill={`rgba(${color.rgb},${active ? 0.18 : dimmed ? 0.05 : 0.11})`}
+              stroke={`rgba(${color.rgb},${active ? 0.34 : dimmed ? 0.1 : 0.2})`}
+              strokeWidth={0.7}
+            />
+            <text
+              x={tagX + tagWidth - tagPaddingX - badgeWidth / 2}
+              y={tagCenterY + 0.5}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill={`rgba(${color.rgb},${active ? 0.96 : dimmed ? 0.35 : 0.82})`}
+              fontSize={8}
+              fontFamily={FONT_MONO}
+              fontWeight={700}
+            >
+              {countLabel}
             </text>
           </g>
         )}
@@ -657,13 +783,88 @@ export default function KeywordMap({
   const viewH = viewSize;
   const cx = viewSize / 2;
   const cy = viewSize / 2;
-  const orbitRadius = 128;
+  const ringRadii = {
+    inner: 104,
+    middle: 124,
+    outer: 136,
+  };
   const sweepRadius = 156;
 
-  const positions = useMemo(
-    () => computeOrbitPositions(keywords.length, cx, cy, orbitRadius, orbitRadius),
-    [keywords.length, cx, cy, orbitRadius],
-  );
+  const positions = useMemo(() => {
+    if (keywords.length <= 3) {
+      return computeOrbitPositions(
+        keywords.length,
+        cx,
+        cy,
+        ringRadii.middle,
+        ringRadii.middle,
+      );
+    }
+
+    const sortedByWeight = keywords
+      .map((keyword, idx) => ({ idx, newsCount: keyword.newsCount }))
+      .sort((a, b) => b.newsCount - a.newsCount || a.idx - b.idx);
+
+    const innerCount = Math.max(1, Math.ceil(keywords.length * 0.25));
+    const outerCount = Math.max(1, Math.floor(keywords.length * 0.25));
+    const innerSet = new Set(sortedByWeight.slice(0, innerCount).map((item) => item.idx));
+    const outerSet = new Set(
+      sortedByWeight
+        .slice(Math.max(innerCount, sortedByWeight.length - outerCount))
+        .map((item) => item.idx)
+        .filter((idx) => !innerSet.has(idx)),
+    );
+
+    const innerIndices: number[] = [];
+    const middleIndices: number[] = [];
+    const outerIndices: number[] = [];
+
+    keywords.forEach((_, idx) => {
+      if (innerSet.has(idx)) {
+        innerIndices.push(idx);
+      } else if (outerSet.has(idx)) {
+        outerIndices.push(idx);
+      } else {
+        middleIndices.push(idx);
+      }
+    });
+
+    const resolved = Array.from({ length: keywords.length }, () => ({ x: cx, y: cy }));
+    const rings = [
+      {
+        indices: innerIndices,
+        radius: ringRadii.inner,
+        angle: -Math.PI / 2 - Math.PI / 10,
+      },
+      {
+        indices: middleIndices,
+        radius: ringRadii.middle,
+        angle: -Math.PI / 2 + Math.PI / 12,
+      },
+      {
+        indices: outerIndices,
+        radius: ringRadii.outer,
+        angle: -Math.PI / 2 + Math.PI / 5,
+      },
+    ];
+
+    rings.forEach((ring) => {
+      const ringPositions = computeOrbitPositions(
+        ring.indices.length,
+        cx,
+        cy,
+        ring.radius,
+        ring.radius,
+        ring.angle,
+      );
+
+      ring.indices.forEach((keywordIndex, positionIndex) => {
+        resolved[keywordIndex] = ringPositions[positionIndex] ?? { x: cx, y: cy };
+      });
+    });
+
+    return resolved;
+  }, [keywords, cx, cy, ringRadii.inner, ringRadii.middle, ringRadii.outer]);
 
   // Determine which IDs are "active" (selected or hovered + neighbors)
   const activeIds = useMemo(() => {
@@ -807,37 +1008,43 @@ export default function KeywordMap({
             </g>
           </g>
 
-          {/* Orbit track ellipse */}
-          <ellipse
-            cx={cx}
-            cy={cy}
-            rx={orbitRadius}
-            ry={orbitRadius}
-            fill="none"
-            stroke="rgba(0,212,255,0.08)"
-            strokeWidth={0.8}
-            strokeDasharray="4 6"
-            style={{
-              opacity: activeIds ? 0.3 : 1,
-              transition: "opacity 0.5s ease",
-            }}
-          />
-
-          {/* Secondary orbit ring (decorative) */}
-          <ellipse
-            cx={cx}
-            cy={cy}
-            rx={orbitRadius + 15}
-            ry={orbitRadius + 15}
-            fill="none"
-            stroke="rgba(168,85,247,0.04)"
-            strokeWidth={0.5}
-            strokeDasharray="2 8"
-            style={{
-              opacity: activeIds ? 0.15 : 1,
-              transition: "opacity 0.5s ease",
-            }}
-          />
+          {/* Weighted orbit rings */}
+          {[
+            {
+              radius: ringRadii.inner,
+              stroke: "rgba(0,212,255,0.11)",
+              strokeWidth: 0.8,
+              strokeDasharray: "3 5",
+            },
+            {
+              radius: ringRadii.middle,
+              stroke: "rgba(0,212,255,0.08)",
+              strokeWidth: 0.8,
+              strokeDasharray: "4 6",
+            },
+            {
+              radius: ringRadii.outer,
+              stroke: "rgba(168,85,247,0.06)",
+              strokeWidth: 0.6,
+              strokeDasharray: "2 7",
+            },
+          ].map((ring) => (
+            <ellipse
+              key={ring.radius}
+              cx={cx}
+              cy={cy}
+              rx={ring.radius}
+              ry={ring.radius}
+              fill="none"
+              stroke={ring.stroke}
+              strokeWidth={ring.strokeWidth}
+              strokeDasharray={ring.strokeDasharray}
+              style={{
+                opacity: activeIds ? 0.26 : 1,
+                transition: "opacity 0.5s ease",
+              }}
+            />
+          ))}
 
           {/* Core */}
           <CoreNode cx={cx} cy={cy} dimmed={activeIds != null} />
