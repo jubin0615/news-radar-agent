@@ -4,7 +4,9 @@
 
 👉 [바로가기](https://news-radar-agent.vercel.app/)
 
-![화면 캡처](./screenshot.png)
+| 대시보드 | 뉴스 수집 | AI 채팅 |
+|:---:|:---:|:---:|
+| ![대시보드](./docs/screenshots/screenshot-dashboard.png) | ![뉴스 수집](./docs/screenshots/screenshot-news.png) | ![AI 채팅](./docs/screenshots/screenshot-chat.png) |
 
 ---
 
