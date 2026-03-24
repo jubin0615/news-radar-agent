@@ -2,7 +2,7 @@
 
 키워드 기반 뉴스 자동 수집, AI 중요도 평가, RAG 대화형 분석을 제공하는 뉴스 큐레이션 플랫폼.
 
-[![바로가기](https://img.shields.io/badge/Live%20Demo-바로가기-blue?style=for-the-badge)](https://news-radar-agent.vercel.app/)
+**[▶ 바로가기](https://news-radar-agent.vercel.app/)**
 
 ### 대시보드
 ![대시보드](./docs/screenshots/screenshot-dashboard.png)
