@@ -2,11 +2,16 @@
 
 키워드 기반 뉴스 자동 수집, AI 중요도 평가, RAG 대화형 분석을 제공하는 뉴스 큐레이션 플랫폼.
 
-👉 [바로가기](https://news-radar-agent.vercel.app/)
+[![바로가기](https://img.shields.io/badge/Live%20Demo-바로가기-blue?style=for-the-badge)](https://news-radar-agent.vercel.app/)
 
-| 대시보드 | 뉴스 수집 | AI 채팅 |
-|:---:|:---:|:---:|
-| ![대시보드](./docs/screenshots/screenshot-dashboard.png) | ![뉴스 수집](./docs/screenshots/screenshot-news.png) | ![AI 채팅](./docs/screenshots/screenshot-chat.png) |
+### 대시보드
+![대시보드](./docs/screenshots/screenshot-dashboard.png)
+
+### 뉴스 수집
+![뉴스 수집](./docs/screenshots/screenshot-news.png)
+
+### AI 채팅
+![AI 채팅](./docs/screenshots/screenshot-chat.png)
 
 ---
 
@@ -63,38 +68,35 @@
 
 ### Backend
 
-| 구분 | 기술 | 버전 |
-|------|------|------|
-| Framework | Spring Boot | 3.5.10 |
-| Language | Java | 21 |
-| Build | Gradle | 8.14.4 |
-| AI | Spring AI (OpenAI) | 1.0.0 |
-| Vector Store | SimpleVectorStore / PgVector | - |
-| Database | H2 (개발) / PostgreSQL (운영) | - |
-| Crawling | Jsoup | 1.17.2 |
-| Auth | Spring Security + JWT (jjwt) | 0.12.x |
+<p>
+  <img src="https://skillicons.dev/icons?i=java,spring,gradle,postgres&theme=dark" />
+</p>
+
+- **Java 21** · **Spring Boot 3.5.10** · **Gradle**
+- **Spring AI 1.0.0** (OpenAI GPT-4o / GPT-4o-mini)
+- **SimpleVectorStore** (개발) · **PgVector** (운영)
+- **H2** (개발) · **PostgreSQL 16** (운영)
+- **Jsoup** (뉴스 크롤링) · **Spring Security + JWT**
 
 ### Frontend
 
-| 구분 | 기술 | 버전 |
-|------|------|------|
-| Framework | Next.js (App Router) | 16.1.6 |
-| Language | TypeScript | 5.x |
-| UI | React | 19.2.3 |
-| Styling | Tailwind CSS | v4 |
-| Animation | Framer Motion | 12.34.2 |
-| AI Chat | CopilotKit | 1.51.4 |
-| Auth | NextAuth.js | 4.24.13 |
-| Markdown | react-markdown + remark-gfm | - |
-| Icon | Lucide React | 0.574.0 |
+<p>
+  <img src="https://skillicons.dev/icons?i=nextjs,ts,react,tailwind&theme=dark" />
+</p>
+
+- **Next.js 16** (App Router) · **TypeScript** · **React 19**
+- **Tailwind CSS v4** · **Framer Motion** (애니메이션)
+- **CopilotKit 1.51** (AI 채팅) · **NextAuth.js** (OAuth)
 
 ### Infra
 
-| 구분 | 기술 |
-|------|------|
-| Container | Docker, Docker Compose |
-| Database (운영) | PostgreSQL 16 + pgvector |
-| CI/CD | GitHub Actions → EC2 SSH 배포 |
+<p>
+  <img src="https://skillicons.dev/icons?i=docker,githubactions,vercel&theme=dark" />
+</p>
+
+- **Docker Compose** (PostgreSQL + Backend)
+- **GitHub Actions** → EC2 자동 배포
+- **Vercel** (프론트엔드 호스팅)
 
 ---
 
